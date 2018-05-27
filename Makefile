@@ -1,16 +1,28 @@
-TARGET: server
+odb = sikradio-sender
+nad = sikradio-receiver
+
+TARGET: sender receiver
 
 CXX	= g++
 CXXFLAGS= -Wall -O2 -Wextra -std=c++17
 
-server: main.o menu.o
-	$(CXX) -o main main.o menu.o
+sender: $(nad).o menu.o utils.o
+	$(CXX) -o $(nad) $(nad).o utils.o
 
-main.o: main.cc menu.h
-	$(CXX) -c $(CXXFLAGS) main.cc
+receiver: $(odb).o menu.o utils.o
+	$(CXX) -o $(odb) $(odb).o menu.o utils.o
 
-menu.o: menu.cc
+$(nad).o:  menu.o utils.o
+	$(CXX) -c $(CXXFLAGS) $(nad).cc
+
+$(odb).o: menu.o
+	$(CXX) -c $(CXXFLAGS) $(odb).cc
+
+menu.o:
 	$(CXX) -c $(CXXFLAGS) menu.cc
+
+utils.o: utils.cc
+	$(CXX) -c $(CXXFLAGS) utils.cc
 
 .PHONY: clean TARGET
 clean:

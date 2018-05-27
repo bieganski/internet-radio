@@ -2,7 +2,8 @@
 #define TELNET_CONSTS_H
 
 namespace TelnetConstants {
-	// DO LINEMODE, WILL ECHO
+    // DO LINEMODE, WILL ECHO
+    // TODO użyć arp/telnet
 	static const char NEGOTIATE[] = "\377\375\042\377\373\001";
 
 	static const char CLEAR[] = {27, 99, 0};
