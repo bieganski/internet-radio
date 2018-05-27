@@ -10,6 +10,7 @@
 #include <iostream>
 #include <byteswap.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include "menu.h"
 #include "telnet_consts.hpp"
@@ -20,9 +21,11 @@ using namespace std;
 using namespace Constants;
 using namespace TelnetConstants;
 
-#define TTL_VALUE       10
-#define BUF_DEF_SIZE    2000
+
+const size_t BUF_DEF_SIZE = 2000;
+
 char buff[BUF_DEF_SIZE];
+char ctrl_buff[BUF_DEF_SIZE];
 
 // these not in consts file because of varying size
 char *MCAST_ADDR = nullptr;
@@ -82,37 +85,8 @@ void parse_args(int argc, char *argv[]) {
 }
 
 
-/**
- * Connects to given address used to send broadcast packages.
- * @return broadcast sock
- */
-int set_brcst_sock(const char *addr, const unsigned short port) {
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0)
-        err("socket error!");
-    int optval = 1;
-    // broadcast option
-    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *) &optval,
-                   sizeof optval) < 0)
-        err("setsockopt broadcast set error!");
-    // TTL set
-    optval = TTL_VALUE;
-    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (void *) &optval,
-                   sizeof optval) < 0)
-        err("setsockopt multicast TTL set error!");
 
-    struct sockaddr_in addr_in;
-    memset(&addr_in, '\0', sizeof(struct sockaddr_in));
-    addr_in.sin_family = AF_INET;
-    addr_in.sin_port = htons(port);
-    if (inet_aton(addr, &addr_in.sin_addr) == 0)
-        err("inet_aton error!");
 
-    if (connect(sock, (struct sockaddr *) &addr_in, sizeof addr_in) < 0)
-        err("connect error!");
-    std::cout << "polaczylem sie z " << addr << " na porcie " << port;
-    return sock;
-}
 
 void finish_job() {
     exit(1);
@@ -140,38 +114,42 @@ void read_and_send(int sock) {
             finish_job();
         }
         else {
-            //AudioPack new_pack = AudioPack(SESS_ID, first_byte, buff, len);
-            //new_pack.to_str();
-            //new_pack.send_udp(sock, len);
             send_udp(sock, first_byte);
             first_byte += len;
         }
     } while (len > 0);
 }
 
-#ifdef lol
-void read_and_send(int sock) {
-    char napis[] = "kurde bele co za cwele";
-    size_t rozmiar = strlen(napis);
-    int len = 100;
+
+void recv_ctrl_packs() {
+    int ctrl_sock = set_brcst_sock(INADDR_ANY, CTRL_PORT);
+    ssize_t len;
     do {
-        write(sock, napis, rozmiar);
-    } while (len-- > 0);
+        len = read(ctrl_sock, ctrl_buff, BUF_DEF_SIZE);
+        cout << "CTRL: dostalem pakiet taki: \n" << ctrl_buff << "\n";
+    } while (len > 0);
+    // sleep(1);
+    exit(1);
+    // cout << INADDR_ANY;
 }
-#endif
 
 int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(NULL);
     NAME = (char *) malloc(NAME_LEN);
     parse_args(argc, argv);
     int data_sock = set_brcst_sock(MCAST_ADDR, DATA_PORT);
-    switch (fork()) {
+    pid_t ctrl_ps; // process receiving control packages
+    switch (ctrl_ps = fork()) {
         case 0:
-            exit(1);
+            cout << "jesetm syunem";
+            fflush(stdin);
+            recv_ctrl_packs();
             break;
         default:
+            read_and_send(data_sock);
+            //kill(ctrl_ps, SIGKILL);
             break;
     }
-    read_and_send(data_sock);
+
     return 0;
 }

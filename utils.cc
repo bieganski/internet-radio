@@ -60,3 +60,36 @@ extern unsigned get_pos_nr_or_err(const char *str) {
         err("Wrong argument.");
     return (unsigned) res;
 }
+
+
+/**
+ * Connects to given address used to send broadcast packages.
+ * @return broadcast sock
+ */
+extern int set_brcst_sock(const char *addr, const unsigned short port) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0)
+        err("socket error!");
+    int optval = 1;
+    // broadcast option
+    if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *) &optval,
+                   sizeof optval) < 0)
+        err("setsockopt broadcast set error!");
+    // TTL set
+    optval = Constants::TTL_VALUE;
+    if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (void *) &optval,
+                   sizeof optval) < 0)
+        err("setsockopt multicast TTL set error!");
+
+    struct sockaddr_in addr_in;
+    memset(&addr_in, '\0', sizeof(struct sockaddr_in));
+    addr_in.sin_family = AF_INET;
+    addr_in.sin_port = htons(port);
+    if (inet_aton(addr, &addr_in.sin_addr) == 0)
+        err("inet_aton error!");
+
+    if (connect(sock, (struct sockaddr *) &addr_in, sizeof addr_in) < 0)
+        err("connect error!");
+    std::cout << "polaczylem sie z " << addr << " na porcie " << port;
+    return sock;
+}

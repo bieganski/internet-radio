@@ -12,16 +12,16 @@ sender: $(nad).o menu.o utils.o
 receiver: $(odb).o menu.o utils.o
 	$(CXX) -o $(odb) $(odb).o menu.o utils.o
 
-$(nad).o:  menu.o utils.o
+$(nad).o: menu.o utils.o
 	$(CXX) -c $(CXXFLAGS) $(nad).cc
 
-$(odb).o: menu.o
+$(odb).o: menu.o utils.o
 	$(CXX) -c $(CXXFLAGS) $(odb).cc
 
 menu.o:
 	$(CXX) -c $(CXXFLAGS) menu.cc
 
-utils.o: utils.cc
+utils.o: utils.cc consts.hpp
 	$(CXX) -c $(CXXFLAGS) utils.cc
 
 .PHONY: clean TARGET

@@ -9,7 +9,7 @@ namespace Constants {
 
     const size_t INFO_LEN = SESS_ID_SIZE + BYTE_NUM_SIZE;
 
-
+    const int TTL_VALUE = 10;
 
     static unsigned MY_IDX = 385162; // mb385162
 
@@ -18,9 +18,9 @@ namespace Constants {
 
     static uint16_t DATA_PORT = 20000 + (MY_IDX % 10000);
 
-    static unsigned CTRL_PORT = 30000 + (MY_IDX % 10000);
+    static unsigned short CTRL_PORT = 30000 + (MY_IDX % 10000);
 
-    static unsigned UI_PORT = 10000 + (MY_IDX % 10000);
+    static unsigned short UI_PORT = 10000 + (MY_IDX % 10000);
 
     // static unsigned PSIZE = 512; TODO USTAWIC TO !!!!!
     static unsigned PSIZE = 64;

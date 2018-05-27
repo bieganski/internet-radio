@@ -1,6 +1,9 @@
 #ifndef _UTILS_H
 #define _UTILS_H
 
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <iostream>
 #include <cstring>
 #include <netinet/in.h>
@@ -52,5 +55,8 @@ extern void err(const char *mess);
 extern bool is_positive_number(const char *str);
 
 extern unsigned get_pos_nr_or_err(const char *str);
+
+extern int set_brcst_sock(const char *addr, const unsigned short port);
+
 
 #endif // _UTILS_H
