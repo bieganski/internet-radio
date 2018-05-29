@@ -1,6 +1,8 @@
 #ifndef _CONSTS_H
 #define _CONSTS_H
 
+#include <netinet/in.h>
+
 namespace Constants {
 
     const size_t SESS_ID_SIZE = 8; // in bytes, size of session id
@@ -16,11 +18,11 @@ namespace Constants {
     // TODO odbiornik
         // static char DISCOVER_ADDR[] = "255.255.255.255"; // fixed length
 
-    in_port_t DATA_PORT = 20000 + (MY_IDX % 10000);
+    static in_port_t DATA_PORT = 20000 + (MY_IDX % 10000);
 
-    in_port_t CTRL_PORT = 30000 + (MY_IDX % 10000);
+    static in_port_t CTRL_PORT = 30000 + (MY_IDX % 10000);
 
-    in_port_t UI_PORT = 10000 + (MY_IDX % 10000);
+    static in_port_t UI_PORT = 10000 + (MY_IDX % 10000);
 
     // static unsigned PSIZE = 512; TODO USTAWIC TO !!!!!
     static unsigned PSIZE = 64;

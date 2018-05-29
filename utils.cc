@@ -3,6 +3,8 @@
 #include "utils.h"
 
 
+using namespace Constants;
+
 /*
  *  ------- AUDIOFIFO IMPLEMENTATION --------
  */
@@ -41,13 +43,12 @@ GroupSock::GroupSock(Type t) : type(t) {
                        sizeof optval) < 0)
             err("setsockopt multicast TTL set error!");
     }
-    else if (type ==
-             MULTICAST) { ; // no setsockopt but need to join to any group
+    else if (type == MULTICAST) {
+        ; // no setsockopt but need to join to any group
     }
     else { ; // nothing here at this moment
         assert(false);
     }
-
 }
 
 GroupSock::~GroupSock() {

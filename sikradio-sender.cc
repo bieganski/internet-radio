@@ -25,6 +25,12 @@ using namespace Constants;
 using namespace TelnetConstants;
 
 
+// TODO ***** WAZNE       poczytac o REUSE ADDR
+
+// TODO ***** ioctl() API sets the socket to be nonblocking.
+
+// TODO *****
+
 const size_t BUF_DEF_SIZE = 2000;
 
 char buff[BUF_DEF_SIZE];
@@ -104,7 +110,10 @@ void send_udp(int sock, uint64_t first_byte_num) {
     write(sock, buff, PSIZE + INFO_LEN); // UDP send
 }
 
-void read_and_send(int sock) {
+void read_and_send() {
+    GroupSock data_sock{};
+    data_sock.connect(MCAST_ADDR, DATA_PORT);
+
     uint64_t first_byte = 0;
     ssize_t len;
     int symulacja;
@@ -116,7 +125,7 @@ void read_and_send(int sock) {
             finish_job();
         }
         else {
-            send_udp(sock, first_byte);
+            send_udp(data_sock.get_sock(), first_byte);
             first_byte += len;
         }
     } while (len > 0);
@@ -124,19 +133,19 @@ void read_and_send(int sock) {
 
 
 
+// TODO to jest blokujące
 
 void recv_ctrl_packs() {
-    GroupSock ctrl_sock;
+    GroupSock ctrl_sock{};
     ctrl_sock.bind(INADDR_ANY, CTRL_PORT);
 
     ssize_t len;
-    cout << ">>>>>>>>>>>>>>. WITAM SERTDECZNIE >>>>>> \n";
     do {
         len = read(ctrl_sock.get_sock(), ctrl_buff, BUF_DEF_SIZE);
         ctrl_buff[len] = '\0';
         cout << "CTRL: dostalem pakiet taki: \n" << ctrl_buff << "\n";
     } while (len > 0);
-    cout <<"JAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
     exit(1);
 }
 
@@ -144,17 +153,15 @@ int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(NULL);
     NAME = (char *) malloc(NAME_LEN);
     parse_args(argc, argv);
-    GroupSock data_sock;
-    data_sock.connect(MCAST_ADDR, DATA_PORT);
-    pid_t ctrl_ps; // process receiving control packages
+
 
     // TEN ODBIERA KONTROLNE PAKIETY
-    std::thread t1(recv_ctrl_packs);
+    std::thread CTRL_THREAD(recv_ctrl_packs);
 
 
     // TEN CZYTA Z WEJSCIA I WYSYLA DANE
-    //read_and_send(data_sock.get_sock());
+    //read_and_send();
 
-    t1.join();
+    CTRL_THREAD.join();
     return 0;
 }

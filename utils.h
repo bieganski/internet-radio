@@ -50,7 +50,7 @@ private:
 public:
     GroupSock(Type t);
 
-    GroupSock() : type(BROADCAST) {}
+    GroupSock() : GroupSock(BROADCAST) {}
 
     ~GroupSock();
 
