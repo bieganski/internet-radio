@@ -10,7 +10,10 @@
 #include <iostream>
 #include <byteswap.h>
 #include <fcntl.h>
-#include <signal.h>
+#include <csignal>
+#include <sys/wait.h>
+
+#include <thread>
 
 #include "menu.h"
 #include "telnet_consts.hpp"
@@ -110,7 +113,6 @@ void read_and_send(int sock) {
         //len = read(STDIN_FILENO, buff, PSIZE);
         len = read(symulacja, buff + INFO_LEN, PSIZE);
         if (len != PSIZE) {
-            cout << "KONIEC CZYTANIA: len jest " << len << std::endl;
             finish_job();
         }
         else {
@@ -121,35 +123,38 @@ void read_and_send(int sock) {
 }
 
 
+
+
 void recv_ctrl_packs() {
-    int ctrl_sock = set_brcst_sock(INADDR_ANY, CTRL_PORT);
+    GroupSock ctrl_sock;
+    ctrl_sock.bind(INADDR_ANY, CTRL_PORT);
+
     ssize_t len;
+    cout << ">>>>>>>>>>>>>>. WITAM SERTDECZNIE >>>>>> \n";
     do {
-        len = read(ctrl_sock, ctrl_buff, BUF_DEF_SIZE);
+        len = read(ctrl_sock.get_sock(), ctrl_buff, BUF_DEF_SIZE);
+        ctrl_buff[len] = '\0';
         cout << "CTRL: dostalem pakiet taki: \n" << ctrl_buff << "\n";
     } while (len > 0);
-    // sleep(1);
+    cout <<"JAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     exit(1);
-    // cout << INADDR_ANY;
 }
 
 int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(NULL);
     NAME = (char *) malloc(NAME_LEN);
     parse_args(argc, argv);
-    int data_sock = set_brcst_sock(MCAST_ADDR, DATA_PORT);
+    GroupSock data_sock;
+    data_sock.connect(MCAST_ADDR, DATA_PORT);
     pid_t ctrl_ps; // process receiving control packages
-    switch (ctrl_ps = fork()) {
-        case 0:
-            cout << "jesetm syunem";
-            fflush(stdin);
-            recv_ctrl_packs();
-            break;
-        default:
-            read_and_send(data_sock);
-            //kill(ctrl_ps, SIGKILL);
-            break;
-    }
 
+    // TEN ODBIERA KONTROLNE PAKIETY
+    std::thread t1(recv_ctrl_packs);
+
+
+    // TEN CZYTA Z WEJSCIA I WYSYLA DANE
+    //read_and_send(data_sock.get_sock());
+
+    t1.join();
     return 0;
 }

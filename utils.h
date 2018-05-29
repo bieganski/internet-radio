@@ -10,27 +10,13 @@
 #include <deque>
 #include <byteswap.h>
 #include <cassert>
+#include <netinet/in.h>
 
 #include "consts.hpp"
 
-//class AudioPack {
-//private:
-//    uint64_t session_id;
-//    uint64_t first_byte_num;
-//    char *audio_data;
-//public:
-//    AudioPack(uint64_t id, uint64_t fb, const char * data, ssize_t len) : session_id(id),
-//                                                       first_byte_num(fb) {
-//        strncpy(audio_data, data, len);
-//    }
-//    void to_buffer(char *buff);
-//
-//    void change_byte_order();
-//
-//    int send_udp(int sock, size_t nbytes);
-//
-//    void to_str();
-//};
+enum Type {
+    BROADCAST, MULTICAST
+};
 
 class AudioFIFO {
 private:
@@ -44,9 +30,49 @@ public:
     AudioFIFO(size_t data_len, size_t fifo_len) : data_len(data_len),
                                                   fifo_size(fifo_len) {}
 
-    std::string& operator[] (size_t num);
+    std::string &operator[](size_t num);
 
-    void push_back(size_t first_byte, const char * data, size_t count);
+    void push_back(size_t first_byte, const char *data, size_t count);
+};
+
+/**
+ * Multicast or broadcast wrapper class.
+ */
+class GroupSock {
+private:
+    Type type;
+    int sock;
+
+    struct sockaddr_in make_addr(uint32_t addr, in_port_t port) const;
+
+    struct sockaddr_in make_addr(const char *addr, in_port_t port) const;
+
+public:
+    GroupSock(Type t);
+
+    GroupSock() : type(BROADCAST) {}
+
+    ~GroupSock();
+
+    // all methods below return socket descriptor
+
+    int get_sock();
+
+    int connect(const char *addr, in_port_t port);
+
+    int connect(in_addr_t addr, in_port_t port);
+
+    int bind(const char *addr, in_port_t port);
+
+    int bind(in_addr_t addr, in_port_t port);
+
+
+    // Multicast methods below
+
+    // keep returned structure to drop member
+    struct ip_mreq add_member(const char *multi_addr);
+
+    void drop_member(struct ip_mreq ip);
 };
 
 
@@ -55,8 +81,5 @@ extern void err(const char *mess);
 extern bool is_positive_number(const char *str);
 
 extern unsigned get_pos_nr_or_err(const char *str);
-
-extern int set_brcst_sock(const char *addr, const unsigned short port);
-
 
 #endif // _UTILS_H
