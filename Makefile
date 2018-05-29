@@ -4,7 +4,7 @@ nad = sikradio-receiver
 TARGET: sender receiver
 
 CXX	= g++
-CXXFLAGS= -lpthread -Wall -g -O2 -Wextra -std=c++17
+CXXFLAGS= -lpthread -Wall -O2 -Wextra -std=c++17
 
 sender: $(nad).o menu.o utils.o
 	$(CXX) $(CXXFLAGS) -o $(nad) $(nad).o utils.o

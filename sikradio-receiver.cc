@@ -11,18 +11,20 @@
 #include <thread>
 
 #define BSIZE         1024
-#define REPEAT_COUNT  30
 
 #include "menu.h"
 #include "telnet_consts.hpp"
 #include "utils.h"
 #include "consts.hpp"
 
+#include "GroupSock.h"
+#include "MessageParser.h"
+
 using namespace std;
 using namespace Constants;
 using namespace TelnetConstants;
 
-
+volatile bool PROGRAM_RUNNING = true;
 
 
 
@@ -35,7 +37,7 @@ void read_data(const char * multi_addr, in_port_t port) {
     char buffer[BSIZE];
 
     /* czytanie tego, co odebrano */
-    for (int i = 0; i < REPEAT_COUNT; ++i) {
+    while (PROGRAM_RUNNING) {
         rcv_len = read(data_multi.get_sock(), buffer, sizeof(buffer));
         if (rcv_len < 0)
             err("read");
@@ -74,10 +76,13 @@ int main (int argc, char *argv[]) {
     GroupSock bcast_sock{};
     bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
     sleep(2);
-    const char * kurde = "ja pierdole";
-    write(bcast_sock.get_sock(), kurde, 12);
+    const char * rex = "LOUDER_PLEASE 0,512,1024,1536,5632,3584";
+    write(bcast_sock.get_sock(), rex, strlen(rex) + 1);
 
+    const char * look = "ZERO_SEVEN_COME_IN";
+    write(bcast_sock.get_sock(), look, strlen(look) + 1);
 
+    PROGRAM_RUNNING = false;
     READ_THREAD.join();
 
     return 0;

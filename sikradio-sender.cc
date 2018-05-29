@@ -14,11 +14,16 @@
 #include <sys/wait.h>
 
 #include <thread>
+#include <sys/select.h>
 
 #include "menu.h"
 #include "telnet_consts.hpp"
 #include "utils.h"
 #include "consts.hpp"
+
+#include "GroupSock.h"
+#include "AudioFIFO.h"
+#include "MessageParser.h"
 
 using namespace std;
 using namespace Constants;
@@ -42,6 +47,7 @@ char *NAME;
 const size_t NAME_LEN = 64;
 uint64_t SESS_ID; // session id
 
+volatile bool PROGRAM_RUNNING = true;
 
 bool proper_ip(const char *str) {
     struct sockaddr_in sa;
@@ -94,14 +100,11 @@ void parse_args(int argc, char *argv[]) {
 }
 
 
-
-
-
 void finish_job() {
     exit(1);
 }
 
-void send_udp(int sock, uint64_t first_byte_num) {
+void send_data_udp(int sock, uint64_t first_byte_num) {
     // we use network byte order
     uint64_t sess_net = bswap_64(SESS_ID);
     uint64_t first_byte_net = bswap_64(first_byte_num);
@@ -125,7 +128,7 @@ void read_and_send() {
             finish_job();
         }
         else {
-            send_udp(data_sock.get_sock(), first_byte);
+            send_data_udp(data_sock.get_sock(), first_byte);
             first_byte += len;
         }
     } while (len > 0);
@@ -136,17 +139,54 @@ void read_and_send() {
 // TODO to jest blokujące
 
 void recv_ctrl_packs() {
+    int ret;
+    ssize_t len;
+    fd_set read_set;
+    struct timeval tv;
+
     GroupSock ctrl_sock{};
     ctrl_sock.bind(INADDR_ANY, CTRL_PORT);
+    // TODO chyba powinien być blokujący
+    int sock_fd = ctrl_sock.get_sock();
+    tv.tv_sec = 0;
+    tv.tv_usec = RTIME * 1000; // RTIME is in miliseconds
 
-    ssize_t len;
-    do {
-        len = read(ctrl_sock.get_sock(), ctrl_buff, BUF_DEF_SIZE);
-        ctrl_buff[len] = '\0';
-        cout << "CTRL: dostalem pakiet taki: \n" << ctrl_buff << "\n";
-    } while (len > 0);
+    FD_ZERO(&read_set);
 
-    exit(1);
+    while (PROGRAM_RUNNING) {
+        FD_SET(sock_fd, &read_set);
+        ret = select(sock_fd + 1, &read_set, NULL, NULL, &tv);
+        if (tv.tv_usec == 0) {
+            tv.tv_usec = RTIME * 1000;
+            tv.tv_sec = 0;
+        }
+
+        if (ret == -1) {
+            err("select error!");
+        }
+        else if (ret == 0) { // timeout
+            ; // nothing to do
+        }
+        else {
+            len = read(sock_fd, ctrl_buff, BUF_DEF_SIZE);
+            ctrl_buff[len] = '\0'; // just to be sure
+            MessageParser mp;
+            switch (mp.parse(ctrl_buff)) {
+                case(LOOKUP):
+                    cout << "CTRL: LOOKUP: " << ctrl_buff << "\n";
+                    break;
+                case(REXMIT):
+                    cout << "CTRL: REXMIT: " << ctrl_buff << "\n";
+                    break;
+                case(UNKNOWN):
+                    cout << "CTRL: NIEZNANE: " << ctrl_buff << "\n";
+                    break;
+                default:
+                    assert(false); // must be UNKNOWN
+                    break;
+            }
+        }
+    } // while (PROGRAM_RUNNING)
 }
 
 int main(int argc, char *argv[]) {
@@ -162,6 +202,10 @@ int main(int argc, char *argv[]) {
     // TEN CZYTA Z WEJSCIA I WYSYLA DANE
     //read_and_send();
 
+
+    free(NAME);
+    PROGRAM_RUNNING = false;
     CTRL_THREAD.join();
+
     return 0;
 }

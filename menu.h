@@ -2,7 +2,7 @@
 #define _MENU_H
 
 #include <vector>
-#include <string.h>
+#include <cstring>
 #include <string>
 #include <functional>
 
@@ -12,10 +12,10 @@
  */
 class MenuRow {
 public:
-	std::string content;
-	std::function<bool (int)> act; // executed after being chosed
-	MenuRow(const char *text, std::function<bool (int)> act) : 
-		content{std::string(text)}, act{std::move(act)} {};
+    std::string content;
+    std::function<bool(int)> act; // executed after being chosed
+    MenuRow(const char *text, std::function<bool(int)> act) :
+        content{std::string(text)}, act{std::move(act)} {};
 };
 
 /**
@@ -23,30 +23,36 @@ public:
  */
 class Menu {
 private:
-	std::string marking;
-	std::vector<MenuRow> rows;
-	size_t marked_row;
-	std::string str() const;
+    std::string marking;
+    std::vector<MenuRow> rows;
+    size_t marked_row;
 
-	friend class MenuManager;
+    std::string str() const;
+
+    friend class MenuManager;
+
 public:
-	Menu() : marking{std::string("* ")}, marked_row{0} {};
-	void go_up();
-	void go_down();
-	void display(int sockdesc) const;
+    Menu() : marking{std::string("* ")}, marked_row{0} {};
+
+    void go_up();
+
+    void go_down();
+
+    void display(int sockdesc) const;
 };
 
 /*
  * Processes users' requests, maintains menus.
- */  
+ */
 class MenuManager {
 private:
-	std::vector<Menu> menus;
-	size_t act_menu; // index in 'menus' vector
+    std::vector<Menu> menus;
+    size_t act_menu; // index in 'menus' vector
 public:
-	MenuManager();
-	// returns false if client disconnected
-	bool act(int sockdesc, char *action);
+    MenuManager();
+
+    // returns false if client disconnected
+    bool act(int sockdesc, char *action);
 };
 
 #endif //_MENU_H
