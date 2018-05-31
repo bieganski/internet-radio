@@ -23,14 +23,14 @@
 #include "menu.h"
 #include "telnet_consts.hpp"
 #include "utils.h"
-#include "consts.hpp"
+#include "send_consts.hpp"
 
 #include "GroupSock.h"
 #include "AudioFIFO.h"
 #include "MessageParser.h"
 
 using namespace std;
-using namespace Constants;
+using namespace Send_Consts;
 using namespace TelnetConstants;
 
 

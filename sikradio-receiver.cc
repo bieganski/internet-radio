@@ -13,21 +13,63 @@
 #include <atomic>
 #include <cassert>
 
-#define BSIZE         1024
-
 #include "menu.h"
 #include "telnet_consts.hpp"
 #include "utils.h"
-#include "consts.hpp"
+#include "recv_consts.hpp"
 
 #include "GroupSock.h"
 #include "MessageParser.h"
 
 using namespace std;
-using namespace Constants;
+using namespace Recv_Consts;
 using namespace TelnetConstants;
 
 std::atomic<bool> PROGRAM_RUNNING(true);
+
+// TODO przy lookupie sprawdzic dlugosc nazwy
+
+size_t NAME_LEN = 60;
+char * NAME = nullptr;
+
+void parse_args(int argc, char *argv[]) {
+    int c;
+    unsigned tmp;
+    while ((c = getopt(argc, argv, "d:C:U:b:R:n:")) != -1) {
+        switch (c) {
+            case 'd': // discover address
+                break;
+            case 'C': // control datagrams port
+                tmp = get_pos_nr_or_err(optarg);
+                if (!tmp || (tmp >> 16))
+                    err("Port number must be 16-bit unsigned.");
+                CTRL_PORT = (uint16_t) tmp;
+                break;
+            case 'U': // user interface port
+                tmp = get_pos_nr_or_err(optarg);
+                if (!tmp || (tmp >> 16))
+                    err("Port number must be 16-bit unsigned.");
+                UI_PORT = (uint16_t) tmp;
+                break;
+            case 'b': // buffer size
+                BSIZE = get_pos_nr_or_err(optarg);
+                break;
+            case 'R': // retransmission time
+                RTIME = get_pos_nr_or_err(optarg);
+                break;
+            case 'n': // transmittor name
+                if (strlen(optarg) >= NAME_LEN)
+                    err("Transmitter name too long.");
+                NAME = (char *) malloc(NAME_LEN);
+                NAME = strncpy(NAME, optarg, NAME_LEN);
+                NAME[strlen(optarg)] = '\0'; // just to be sure
+                break;
+            default:
+                // getopt handles wrong arguments
+                exit(1);
+        }
+    }
+}
 
 
 
@@ -37,7 +79,7 @@ void read_data(const char * multi_addr, in_port_t port) {
     data_multi.bind(INADDR_ANY, port);
 
     ssize_t rcv_len;
-    char buffer[BSIZE];
+    char buffer[5000]; // TODO const
 
     /* czytanie tego, co odebrano */
     while (PROGRAM_RUNNING) {
