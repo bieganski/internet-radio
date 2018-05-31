@@ -1,6 +1,7 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <iostream>
+#include <cstdlib>
+#include <string>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -9,6 +10,8 @@
 #include <byteswap.h>
 #include "utils.h"
 #include <thread>
+#include <atomic>
+#include <cassert>
 
 #define BSIZE         1024
 
@@ -24,7 +27,7 @@ using namespace std;
 using namespace Constants;
 using namespace TelnetConstants;
 
-volatile bool PROGRAM_RUNNING = true;
+std::atomic<bool> PROGRAM_RUNNING(true);
 
 
 
@@ -39,6 +42,7 @@ void read_data(const char * multi_addr, in_port_t port) {
     /* czytanie tego, co odebrano */
     while (PROGRAM_RUNNING) {
         rcv_len = read(data_multi.get_sock(), buffer, sizeof(buffer));
+        assert(rcv_len >= 0);
         if (rcv_len < 0)
             err("read");
         else {
@@ -56,6 +60,25 @@ void read_data(const char * multi_addr, in_port_t port) {
 }
 
 
+void czytaj_odp() {
+    GroupSock sock{};
+    sock.bind(INADDR_ANY, 0);
+
+    ssize_t len;
+    char huj[10000];
+    while (PROGRAM_RUNNING) {
+        len = read(sock.get_sock(), huj, 10000);
+        assert(len >= 0);
+        cout << "dostalem rexmita: ";
+        uint64_t l1, l2;
+        memcpy(&l1, huj, 8);
+        memcpy(&l2, huj + 8, 8);
+        uint64_t ln1 = bswap_64(l1);
+        uint64_t ln2 = bswap_64(l2);
+        printf("ln1, ln2: %llu, %llu,\n",ln1, ln2 );
+    }
+}
+
 int main (int argc, char *argv[]) {
     /* argumenty wywołania programu */
     char *multicast_dotted_address;
@@ -68,22 +91,26 @@ int main (int argc, char *argv[]) {
 
 
     // TEN CZYTA CO MU WYSLANO
-    std::thread READ_THREAD(read_data, multicast_dotted_address, local_port);
+    //std::thread READ_THREAD(read_data, multicast_dotted_address, local_port);
 
 
+    // ten nowy czyta odp
+    thread lol = thread(czytaj_odp);
 
     // TEN WYSYLA TEST NA BROAD
     GroupSock bcast_sock{};
     bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
     sleep(2);
-    const char * rex = "LOUDER_PLEASE 0,512,1024,1536,5632,3584";
+    const char * rex = "LOUDER_PLEASE 0,512,1024,1536,5632,3584,-3,ab,2,21\n";
     write(bcast_sock.get_sock(), rex, strlen(rex) + 1);
 
-    const char * look = "ZERO_SEVEN_COME_IN";
+    const char * look = "ZERO_SEVEN_COME_IN\n";
     write(bcast_sock.get_sock(), look, strlen(look) + 1);
 
+
     PROGRAM_RUNNING = false;
-    READ_THREAD.join();
+    //READ_THREAD.join();
+    lol.join();
 
     return 0;
 }

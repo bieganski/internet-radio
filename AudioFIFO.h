@@ -13,11 +13,18 @@ private:
 
     size_t data_bytes() const { return data_len * fifo.size(); }
 
+    ssize_t first(); // first byte sent kept in queue
+
+    ssize_t last(); // last first byte sent
+
 public:
     AudioFIFO(size_t data_len, size_t fifo_len) : data_len(data_len),
                                                   fifo_size(fifo_len) {}
 
+    ssize_t idx(size_t first_byte);
+
     std::string &operator[](size_t first_byte); // must be 'data_len' multiple
+
 
     void push_back(size_t first_byte, const char *data, size_t count);
 };

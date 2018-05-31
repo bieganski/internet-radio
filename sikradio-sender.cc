@@ -12,9 +12,13 @@
 #include <fcntl.h>
 #include <csignal>
 #include <sys/wait.h>
-
+#include <vector>
+#include <set>
+#include <sstream>
 #include <thread>
 #include <sys/select.h>
+#include <mutex>
+#include <atomic>
 
 #include "menu.h"
 #include "telnet_consts.hpp"
@@ -36,9 +40,10 @@ using namespace TelnetConstants;
 
 // TODO *****
 
-const size_t BUF_DEF_SIZE = 2000;
+const size_t BUF_DEF_SIZE = 5000;
 
-char buff[BUF_DEF_SIZE];
+char data_buff[BUF_DEF_SIZE];
+char help_buff[BUF_DEF_SIZE];
 char ctrl_buff[BUF_DEF_SIZE];
 
 // these not in consts file because of varying size
@@ -47,7 +52,13 @@ char *NAME;
 const size_t NAME_LEN = 64;
 uint64_t SESS_ID; // session id
 
-volatile bool PROGRAM_RUNNING = true;
+std::set<uint64_t> TO_REXMIT{};
+std::set<uint64_t> TO_REXMIT_TMP{};
+AudioFIFO FIFO{PSIZE, FSIZE};
+
+std::mutex rexmit_mut;
+
+std::atomic<bool> PROGRAM_RUNNING(true);
 
 bool proper_ip(const char *str) {
     struct sockaddr_in sa;
@@ -72,7 +83,10 @@ void parse_args(int argc, char *argv[]) {
                 DATA_PORT = (uint16_t) tmp;
                 break;
             case 'C': // control datagrams port
-                CTRL_PORT = get_pos_nr_or_err(optarg);
+                tmp = get_pos_nr_or_err(optarg);
+                if (!tmp || (tmp >> 16))
+                    err("Port number must be 16-bit unsigned.");
+                CTRL_PORT = (uint16_t) tmp;
                 break;
             case 'p': // packet size
                 PSIZE = get_pos_nr_or_err(optarg);
@@ -104,13 +118,19 @@ void finish_job() {
     exit(1);
 }
 
-void send_data_udp(int sock, uint64_t first_byte_num) {
+
+/*
+ * Writes session id and first byte number to given buffer
+ * in network order and sends it to given socket.
+ */
+void send_data_udp(int sock, uint64_t first_byte_num, const char *data) {
     // we use network byte order
+    memcpy(help_buff + INFO_LEN, data, PSIZE);
     uint64_t sess_net = bswap_64(SESS_ID);
     uint64_t first_byte_net = bswap_64(first_byte_num);
-    memcpy(buff, &sess_net, sizeof(uint64_t));
-    memcpy(buff + SESS_ID_SIZE, &first_byte_net, sizeof(uint64_t));
-    write(sock, buff, PSIZE + INFO_LEN); // UDP send
+    memcpy(help_buff, &sess_net, sizeof(uint64_t));
+    memcpy(help_buff + SESS_ID_SIZE, &first_byte_net, sizeof(uint64_t));
+    write(sock, help_buff, PSIZE + INFO_LEN); // UDP send
 }
 
 void read_and_send() {
@@ -120,69 +140,131 @@ void read_and_send() {
     uint64_t first_byte = 0;
     ssize_t len;
     int symulacja;
-    symulacja = open("menu.cc", O_RDONLY);
+    symulacja = open("duzy", O_RDONLY);
     do {
         //len = read(STDIN_FILENO, buff, PSIZE);
-        len = read(symulacja, buff + INFO_LEN, PSIZE);
+        len = read(symulacja, data_buff, PSIZE);
         if (len != PSIZE) {
             finish_job();
         }
         else {
-            send_data_udp(data_sock.get_sock(), first_byte);
+            cout << "wysylam fb: " << first_byte << "\n";
+            send_data_udp(data_sock.get_sock(), first_byte, data_buff);
+            FIFO.push_back(first_byte, data_buff, PSIZE);
             first_byte += len;
         }
     } while (len > 0);
 }
 
 
+void parse_rexmit(const char *str) {
+    string mess = string(str);
+    stringstream tmp(mess); // to get rid of trash content
+    tmp >> mess;
+    tmp >> mess;
+    stringstream ss(mess);
+    cout << "HUJ: " << mess << "\n";
+    while (getline(ss, mess, ',')) {
+        if (is_positive_number(mess.c_str())) {
+            rexmit_mut.lock();
+            TO_REXMIT_TMP.insert(
+                (uint64_t) strtoull(mess.c_str(), nullptr, 10));
+            cout << "dodalem do TMP liczbe "
+                 << strtoull(mess.c_str(), nullptr, 10) << "\n";
+            rexmit_mut.unlock();
+        }
+    }
+    cout << "koniec dodawania, w TMP jest " << TO_REXMIT_TMP.size()
+         << "elemetnow\n";
+}
 
-// TODO to jest blokujące
+void send_rexmit(int sock) {
+    rexmit_mut.lock();
+    assert(TO_REXMIT.empty());
+    TO_REXMIT = TO_REXMIT_TMP;
+    TO_REXMIT_TMP.clear();
+    rexmit_mut.unlock(); // let other thread add to tmp set
+    cout << "okej, szykuje sie do wysylania\n";
+    for (uint64_t fb : TO_REXMIT) {
+        ssize_t data_idx = FIFO.idx(fb);
+        cout << "OMG: IDX " << data_idx << "\n";
+        if (data_idx >= 0) { // else none in queue
+            cout << "REX_SEND: fb=" << fb << ", len=" << FIFO[data_idx].size()
+                 << "\n";
+            send_data_udp(sock, fb, FIFO[data_idx].c_str());
+        }
+    }
+    TO_REXMIT.clear();
+}
+
+void send_lookup_response(int sock) {
+    stringstream ss;
+    ss << "BOREWICZ_HERE " << MCAST_ADDR << " " << DATA_PORT <<
+       " " << NAME << "\n";
+    write(sock, ss.str().c_str(), ss.str().size());
+}
+
 
 void recv_ctrl_packs() {
     int ret;
     ssize_t len;
     fd_set read_set;
     struct timeval tv;
-
-    GroupSock ctrl_sock{};
+    GroupSock ctrl_sock{}; // receive TODO should be blocking?
     ctrl_sock.bind(INADDR_ANY, CTRL_PORT);
-    // TODO chyba powinien być blokujący
-    int sock_fd = ctrl_sock.get_sock();
+    bool to_join = false;
+    thread rex;
+
+    GroupSock bcast_sock{}; // send back
+    bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
+
+    int ctrl_sock_fd = ctrl_sock.get_sock();
     tv.tv_sec = 0;
     tv.tv_usec = RTIME * 1000; // RTIME is in miliseconds
 
     FD_ZERO(&read_set);
 
     while (PROGRAM_RUNNING) {
-        FD_SET(sock_fd, &read_set);
-        ret = select(sock_fd + 1, &read_set, NULL, NULL, &tv);
-        if (tv.tv_usec == 0) {
-            tv.tv_usec = RTIME * 1000;
-            tv.tv_sec = 0;
-        }
+        FD_SET(ctrl_sock_fd, &read_set);
+        ret = select(ctrl_sock_fd + 1, &read_set, nullptr, nullptr, &tv);
 
         if (ret == -1) {
             err("select error!");
         }
         else if (ret == 0) { // timeout
-            ; // nothing to do
+            tv.tv_usec = RTIME * 1000;
+            tv.tv_sec = 0;
+            // time down - need to send rexmit
+            if (to_join)
+                rex.join();
+            cout << "koniec czasu, powinienem wyslac tyle: "
+                 << TO_REXMIT_TMP.size() << "\n";
+            rex = thread(send_rexmit, bcast_sock.get_sock());
+            to_join = true;
         }
         else {
-            len = read(sock_fd, ctrl_buff, BUF_DEF_SIZE);
+            len = read(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE);
             ctrl_buff[len] = '\0'; // just to be sure
             MessageParser mp;
             switch (mp.parse(ctrl_buff)) {
-                case(LOOKUP):
+                case (LOOKUP):
                     cout << "CTRL: LOOKUP: " << ctrl_buff << "\n";
+                    // need to send back immediately
+                    send_lookup_response(bcast_sock.get_sock());
                     break;
-                case(REXMIT):
+                case (REXMIT):
                     cout << "CTRL: REXMIT: " << ctrl_buff << "\n";
+                    parse_rexmit(ctrl_buff);
                     break;
-                case(UNKNOWN):
+                case (REPLY):
+                    // do nothing, actually any transmitter sent it
+                    break;
+                case (UNKNOWN):
                     cout << "CTRL: NIEZNANE: " << ctrl_buff << "\n";
+                    // just skip improper message
                     break;
                 default:
-                    assert(false); // must be UNKNOWN
+                    assert(false); // it must be UNKNOWN at least
                     break;
             }
         }
@@ -190,22 +272,24 @@ void recv_ctrl_packs() {
 }
 
 int main(int argc, char *argv[]) {
-    SESS_ID = (uint64_t) time(NULL);
+    SESS_ID = (uint64_t) time(nullptr);
+    const char *DEFAULT_NAME = "Nienazwany Nadajnik";
     NAME = (char *) malloc(NAME_LEN);
+    memcpy(NAME, DEFAULT_NAME, strlen(DEFAULT_NAME) + 1); // parsing may change
+    assert(NAME[strlen(DEFAULT_NAME)] == '\0');
     parse_args(argc, argv);
 
 
     // TEN ODBIERA KONTROLNE PAKIETY
     std::thread CTRL_THREAD(recv_ctrl_packs);
-
+    //CTRL_THREAD.detach();
 
     // TEN CZYTA Z WEJSCIA I WYSYLA DANE
-    //read_and_send();
+    read_and_send();
 
-
-    free(NAME);
-    PROGRAM_RUNNING = false;
+    // PROGRAM_RUNNING = false;
+    assert(PROGRAM_RUNNING == true);
     CTRL_THREAD.join();
-
+    free(NAME);
     return 0;
 }

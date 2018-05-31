@@ -4,7 +4,6 @@
 #include <netinet/in.h>
 
 namespace Constants {
-
     const size_t SESS_ID_SIZE = 8; // in bytes, size of session id
 
     const size_t BYTE_NUM_SIZE = 8; // in bytes, size of first byte num
@@ -24,8 +23,7 @@ namespace Constants {
 
     static in_port_t UI_PORT = 10000 + (MY_IDX % 10000);
 
-    // static unsigned PSIZE = 512; TODO USTAWIC TO !!!!!
-    static unsigned PSIZE = 64;
+    static unsigned PSIZE = 512;
 
     // TODO odbiornik
         // static unsigned BSIZE = 65536;
