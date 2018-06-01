@@ -29,6 +29,9 @@ std::atomic<bool> PROGRAM_RUNNING(true);
 
 // TODO przy lookupie sprawdzic dlugosc nazwy
 
+
+// TODO sprawdzac session id i inne (?) rzeczy jak sie dostanie pakiet
+
 size_t NAME_LEN = 60;
 char * NAME = nullptr;
 
@@ -102,14 +105,14 @@ void read_data(const char * multi_addr, in_port_t port) {
 }
 
 
-void czytaj_odp() {
-    GroupSock sock{};
-    sock.bind(INADDR_ANY, 0);
+void czytaj_odp(in_port_t port, int socketix) {
+//    GroupSock sock{};
+//    sock.bind(INADDR_ANY, port);
 
     ssize_t len;
     char huj[10000];
     while (PROGRAM_RUNNING) {
-        len = read(sock.get_sock(), huj, 10000);
+        len = read(socketix, huj, 10000);
         assert(len >= 0);
         cout << "dostalem rexmita: ";
         uint64_t l1, l2;
@@ -118,6 +121,7 @@ void czytaj_odp() {
         uint64_t ln1 = bswap_64(l1);
         uint64_t ln2 = bswap_64(l2);
         printf("ln1, ln2: %llu, %llu,\n",ln1, ln2 );
+        cout << huj;
     }
 }
 
@@ -136,19 +140,35 @@ int main (int argc, char *argv[]) {
     //std::thread READ_THREAD(read_data, multicast_dotted_address, local_port);
 
 
-    // ten nowy czyta odp
-    thread lol = thread(czytaj_odp);
+
 
     // TEN WYSYLA TEST NA BROAD
     GroupSock bcast_sock{};
-    bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
+    //bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
+    struct sockaddr_in BROAD;
+    socklen_t BROAD_SIZE = sizeof(BROAD);
+    memset(&BROAD, '\0', sizeof(sockaddr_in));
+    BROAD.sin_addr.s_addr = htonl(INADDR_ANY);
+    BROAD.sin_family = AF_INET;
+    BROAD.sin_port = htons(CTRL_PORT);
+
+    struct sockaddr_in wynik;
+    socklen_t len = sizeof(wynik);
+    if (getsockname(bcast_sock.get_sock(), (struct sockaddr *)&wynik, &len) == -1)
+        err("getsockname");
+
+    // ten nowy czyta odp
+    cout << "czytam na porcie " << ntohs(wynik.sin_port) << "\n";
+    thread lol = thread(czytaj_odp, ntohs(wynik.sin_port), bcast_sock.get_sock());
+
     sleep(2);
+    // TODO dodatkowe \0 na koncu nie powinny byc chyba
     const char * rex = "LOUDER_PLEASE 0,512,1024,1536,5632,3584,-3,ab,2,21\n";
-    write(bcast_sock.get_sock(), rex, strlen(rex) + 1);
-
+    //write(bcast_sock.get_sock(), rex, strlen(rex) + 1);
+    sendto(bcast_sock.get_sock(), rex, strlen(rex) + 1, 0, (sockaddr*)&BROAD, BROAD_SIZE);
     const char * look = "ZERO_SEVEN_COME_IN\n";
-    write(bcast_sock.get_sock(), look, strlen(look) + 1);
-
+    // write(bcast_sock.get_sock(), look, strlen(look) + 1);
+    sendto(bcast_sock.get_sock(), look, strlen(look) + 1, 0, (sockaddr*)&BROAD, BROAD_SIZE);
 
     PROGRAM_RUNNING = false;
     //READ_THREAD.join();

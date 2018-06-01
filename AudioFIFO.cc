@@ -39,3 +39,10 @@ ssize_t AudioFIFO::idx(size_t first_byte) {
         return -1;
     return (first_byte - first) / data_len;
 }
+
+bool AudioFIFO::complete() {
+    for (auto i : fifo)
+        if (std::get<std::string>(i).empty())
+            return false;
+    return true;
+}

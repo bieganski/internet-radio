@@ -154,6 +154,7 @@ void read_and_send() {
             first_byte += len;
         }
     } while (len > 0);
+    close(symulacja);
 }
 
 
@@ -197,11 +198,12 @@ void send_rexmit(int sock) {
     TO_REXMIT.clear();
 }
 
-void send_lookup_response(int sock) {
+void send_lookup_response(int sock, struct sockaddr_in * addr) {
     stringstream ss;
     ss << "BOREWICZ_HERE " << MCAST_ADDR << " " << DATA_PORT <<
        " " << NAME << "\n";
-    write(sock, ss.str().c_str(), ss.str().size());
+    sendto(sock, ss.str().c_str(), ss.str().size(), 0, (sockaddr*)addr, sizeof(*addr));
+    // write(sock, ss.str().c_str(), ss.str().size());
 }
 
 
@@ -243,14 +245,19 @@ void recv_ctrl_packs() {
             to_join = true;
         }
         else {
-            len = read(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE);
+            struct sockaddr_in lol;
+            socklen_t roz = sizeof(lol);
+            //len = read(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE);
+            len = recvfrom(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE, 0,
+                           (sockaddr *)&lol, &roz);
+            cout << "UWAGA: DOSTALEM PORT" << ntohs(lol.sin_port) << "A adres " << ntohl(lol.sin_addr.s_addr);
             ctrl_buff[len] = '\0'; // just to be sure
             MessageParser mp;
             switch (mp.parse(ctrl_buff)) {
                 case (LOOKUP):
                     cout << "CTRL: LOOKUP: " << ctrl_buff << "\n";
                     // need to send back immediately
-                    send_lookup_response(bcast_sock.get_sock());
+                    send_lookup_response(bcast_sock.get_sock(), &lol);
                     break;
                 case (REXMIT):
                     cout << "CTRL: REXMIT: " << ctrl_buff << "\n";
@@ -271,6 +278,11 @@ void recv_ctrl_packs() {
     } // while (PROGRAM_RUNNING)
 }
 
+
+// TODO Każdy komunikat to pojedyncza linia tekstu zakończona uniksowym znakiem
+// końca linii. Poza znakiem końca linii dopuszcza się jedynie znaki o numerach
+// od 32 do 127 według kodowania ASCII.
+
 int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(nullptr);
     const char *DEFAULT_NAME = "Nienazwany Nadajnik";
@@ -285,6 +297,7 @@ int main(int argc, char *argv[]) {
     //CTRL_THREAD.detach();
 
     // TEN CZYTA Z WEJSCIA I WYSYLA DANE
+    while (true);
     read_and_send();
 
     // PROGRAM_RUNNING = false;

@@ -27,6 +27,8 @@ public:
 
 
     void push_back(size_t first_byte, const char *data, size_t count);
+
+    bool complete(); // contains consistent bytes sequence
 };
 
 #endif //NETWORK_RADIO_AUDIOFIFO_H
