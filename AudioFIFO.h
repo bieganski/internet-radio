@@ -17,6 +17,8 @@ private:
 
     ssize_t last(); // last first byte sent
 
+    void insert_dummy();
+
 public:
     AudioFIFO(size_t data_len, size_t fifo_len) : data_len(data_len),
                                                   fifo_size(fifo_len) {}
