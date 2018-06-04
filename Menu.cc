@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <sstream>
 
-#include "menu.h"
+#include "Menu.h"
 #include "telnet_consts.hpp"
 
 using namespace TelnetConstants;

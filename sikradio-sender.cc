@@ -20,7 +20,7 @@
 #include <mutex>
 #include <atomic>
 
-#include "menu.h"
+#include "Menu.h"
 #include "telnet_consts.hpp"
 #include "utils.h"
 #include "send_consts.hpp"
@@ -48,7 +48,7 @@ char ctrl_buff[BUF_DEF_SIZE];
 
 // these not in consts file because of varying size
 char *MCAST_ADDR = nullptr;
-char *NAME;
+char *NAME = nullptr;
 const size_t NAME_LEN = 64;
 uint64_t SESS_ID; // session id
 
@@ -202,6 +202,7 @@ void send_lookup_response(int sock, struct sockaddr_in * addr) {
     stringstream ss;
     ss << "BOREWICZ_HERE " << MCAST_ADDR << " " << DATA_PORT <<
        " " << NAME << "\n";
+    cout << "wysylam chuja\n";
     sendto(sock, ss.str().c_str(), ss.str().size(), 0, (sockaddr*)addr, sizeof(*addr));
     // write(sock, ss.str().c_str(), ss.str().size());
 }
@@ -218,7 +219,6 @@ void recv_ctrl_packs() {
     thread rex;
 
     GroupSock bcast_sock{}; // send back
-    bcast_sock.connect(INADDR_BROADCAST, CTRL_PORT);
 
     int ctrl_sock_fd = ctrl_sock.get_sock();
     tv.tv_sec = 0;
@@ -247,31 +247,29 @@ void recv_ctrl_packs() {
         else {
             struct sockaddr_in lol;
             socklen_t roz = sizeof(lol);
-            //len = read(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE);
             len = recvfrom(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE, 0,
                            (sockaddr *)&lol, &roz);
             cout << "UWAGA: DOSTALEM PORT" << ntohs(lol.sin_port) << "A adres " << ntohl(lol.sin_addr.s_addr);
             ctrl_buff[len] = '\0'; // just to be sure
             MessageParser mp;
             switch (mp.parse(ctrl_buff)) {
-                case (LOOKUP):
+                case (Mess::LOOKUP):
                     cout << "CTRL: LOOKUP: " << ctrl_buff << "\n";
                     // need to send back immediately
                     send_lookup_response(bcast_sock.get_sock(), &lol);
                     break;
-                case (REXMIT):
+                case (Mess::REXMIT):
                     cout << "CTRL: REXMIT: " << ctrl_buff << "\n";
                     parse_rexmit(ctrl_buff);
                     break;
-                case (REPLY):
+                case (Mess::REPLY):
                     // do nothing, actually any transmitter sent it
                     break;
-                case (UNKNOWN):
+                case (Mess::UNKNOWN):
                     cout << "CTRL: NIEZNANE: " << ctrl_buff << "\n";
                     // just skip improper message
                     break;
                 default:
-                    assert(false); // it must be UNKNOWN at least
                     break;
             }
         }

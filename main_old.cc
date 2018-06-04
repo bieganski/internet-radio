@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "menu.h"
+#include "Menu.h"
 #include "err.h"
 #include "telnet_consts.hpp"
 

@@ -20,7 +20,7 @@ $(odb).o: $(HELP)
 
 
 menu.o:
-	$(CXX) -c $(CXXFLAGS) menu.cc -o menu.o
+	$(CXX) -c $(CXXFLAGS) Menu.cc -o menu.o
 
 utils.o: utils.cc
 	$(CXX) -c $(CXXFLAGS) utils.cc -o utils.o

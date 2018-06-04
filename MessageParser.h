@@ -3,18 +3,21 @@
 
 #include <regex>
 
-enum Message {
-    LOOKUP, REXMIT, REPLY, UNKNOWN
-};
+namespace Mess {
+    enum Message {
+        LOOKUP, REXMIT, REPLY, UNKNOWN
+    };
+}
+
 
 
 class MessageParser {
-    std::vector <std::pair<Message, std::regex>> mess_vec;
+    std::vector <std::pair<Mess::Message, std::regex>> mess_vec;
 
 public:
     MessageParser();
 
-    Message parse(const char *str);
+    Mess::Message parse(const char *str);
 };
 
 

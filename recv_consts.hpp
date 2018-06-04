@@ -24,6 +24,8 @@ namespace Recv_Consts {
     static unsigned BSIZE = 65536;
 
     static unsigned RTIME = 250;
+
+    const size_t NAME_LEN = 64;
 }
 
 #endif //NETWORK_RADIO_RECV_CONSTS_HPP

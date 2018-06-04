@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <cassert>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 #include "GroupSock.h"
 #include "utils.h"
@@ -10,10 +11,13 @@ using namespace Constants;
 
 
 
-GroupSock::GroupSock(Type t) : type(t) {
+GroupSock::GroupSock(Type t, int flags) : type(t) {
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0)
         err("socket error!");
+    flags = fcntl(sock,F_GETFL);
+    flags |= flags;
+    fcntl(sock, F_SETFL, flags);
 
     if (type == BROADCAST) {
         int optval = 1;
