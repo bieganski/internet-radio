@@ -1,6 +1,6 @@
 odb = sikradio-sender
 nad = sikradio-receiver
-HELP = menu.o utils.o audio.o sock.o mess.o
+HELP = menu.o utils.o audio.o sock.o mess.o trans.o
 TARGET: sender receiver
 
 CXX	= g++
@@ -18,6 +18,9 @@ $(nad).o: $(HELP)
 $(odb).o: $(HELP)
 	$(CXX) -c $(CXXFLAGS) $(odb).cc
 
+
+trans.o:
+	$(CXX) -c $(CXXFLAGS) Transmitter.cc -o trans.o
 
 menu.o:
 	$(CXX) -c $(CXXFLAGS) Menu.cc -o menu.o

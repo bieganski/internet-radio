@@ -43,7 +43,7 @@ std::atomic<uint64_t> ACT_SESS(0); // actual session id
 
 AudioFIFO FIFO{0, BSIZE}; // buffer fifo, it needs reinit (varing packet length)
 
-std::set<Transmitter> TRANSMITTERS{};
+std::map<std::string, Transmitter> TRANSMITTERS{}; // name identifies transmitter
 
 std::mutex trans_mut;
 
@@ -182,19 +182,19 @@ void update_sndr_list(char *reply_msg) {
     ss >> addr; // MC_CAST
     ss >> port; // DATA_PORT
     name = ss.str(); // TODO upewnic sie ze nie ma spacji
-
-    for (auto it = TRANSMITTERS.begin(); it != TRANSMITTERS.end(); ++it) {
-        if (0 == name.compare(it->name)) {
-            exists = true;
-            cout << "uaktualniam chuja " << name << "!\n";
-            it->last_reply_time = time(NULL);
-        }
+    auto it = TRANSMITTERS.find(name);
+    if (it == TRANSMITTERS.end()) {
+        // new station
+        //cout << "dodaje chuja " << name << "!\n";
+        Transmitter tr = Transmitter(addr, (in_port_t) stoi(port));
+        TRANSMITTERS.insert(std::make_pair(name, tr));
     }
-    if (!exists) {
-        Transmitter new_tr = Transmitter(name, addr, stoi(port));
-        TRANSMITTERS.emplace(std::move(new_tr));
-            // TODO MENU REFRESH
-        cout << "dodaje chuja " << name << "!\n";
+    else {
+        exists = true;
+        //cout << "uaktualniam chuja " << name << "!\n";
+        std::get<1>(*it).last_reply_time = (uint64_t) time(NULL);
+    }
+    if (!exists) { ; // TODO odswiez
     }
 }
 
@@ -218,6 +218,9 @@ void lookup_play() {
     BROAD.sin_addr.s_addr = htonl(INADDR_ANY);
     BROAD.sin_family = AF_INET;
     BROAD.sin_port = htons(CTRL_PORT);
+
+    // TODO kurwa to ma byc discover
+
 //
 //    sendto(discv_sock.get_sock(), LOOKUP, strlen(LOOKUP) + 1, 0, (sockaddr*) &BROAD, BROAD_SIZE);
 //
@@ -244,10 +247,10 @@ void lookup_play() {
             sendto(discv_sock.get_sock(), LOOKUP, strlen(LOOKUP) + 1, 0,
                    (sockaddr *) &BROAD, BROAD_SIZE);
             trans_mut.lock();
-            for (auto sndr : TRANSMITTERS) {
-                if (time(NULL) - sndr.last_reply_time >= 20) {
+            for (auto &sndr : TRANSMITTERS) {
+                if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
                     changed_sth = true;
-                    TRANSMITTERS.erase(sndr);
+                    TRANSMITTERS.erase(std::get<0>(sndr));
                 }
             }
             trans_mut.unlock();
