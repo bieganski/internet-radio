@@ -23,36 +23,28 @@ public:
  */
 class Menu {
 private:
-    std::string marking;
     std::vector<MenuRow> rows;
     size_t marked_row;
+    int sock;
 
     std::string str() const;
 
     friend class MenuManager;
 
 public:
-    Menu() : marking{std::string("* ")}, marked_row{0} {};
+    Menu(int sock) : sock(sock), marked_row(0) {};
 
     void go_up();
 
     void go_down();
 
-    void display(int sockdesc) const;
-};
+    void display() const;
 
-/*
- * Processes users' requests, maintains menus.
- */
-class MenuManager {
-private:
-    std::vector<Menu> menus;
-    size_t act_menu; // index in 'menus' vector
-public:
-    MenuManager();
+    void add_station(std::string name, int sockdesc);
 
-    // returns false if client disconnected
-    bool act(int sockdesc, char *action);
+    void rmv_station(std::string name, int sockdesc);
+
+    bool act(const char *action);
 };
 
 #endif //_MENU_H

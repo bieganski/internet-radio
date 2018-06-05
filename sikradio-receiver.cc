@@ -35,15 +35,25 @@ std::atomic<bool> PROGRAM_RUNNING(true);
 
 std::atomic<bool> REFRESH(true);
 
+
+std::atomic<bool> STATION_CHANGED(false);
+
+std::string SHRD_ACT_STATION;
+
+std::mutex act_stat_mut;
+
+
 std::mutex ref_mut;
 
 std::condition_variable ref_cv;
 
 std::atomic<uint64_t> ACT_SESS(0); // actual session id
 
-AudioFIFO FIFO{0, BSIZE}; // buffer fifo, it needs reinit (varing packet length)
+AudioFIFO SHRD_FIFO{0, BSIZE}; // buffer fifo, it needs reinit (varing packet length)
 
-std::map<std::string, Transmitter> TRANSMITTERS{}; // name identifies transmitter
+std::mutex fifo_mut;
+
+std::map<std::string, Transmitter> SHRD_TRANSMITTERS{}; // name identifies transmitter
 
 std::mutex trans_mut;
 
@@ -51,6 +61,9 @@ const char *LOOKUP = "ZERO_SEVEN_COME_IN\n";
 
 char *NAME = nullptr; // name of station to be played
 
+const size_t QUEUE_LEN = 10;
+
+const size_t BUFF_LEN = 5000;
 
 
 
@@ -65,18 +78,8 @@ char *NAME = nullptr; // name of station to be played
 // TODO NAZWA - ZEBY BYLO WIECEJ JAK JEDNO SLOWO
 
 
-void telnetUI() {
-    // TODO ustanow polaczenie
-    // TODO zrob menu
-    while (PROGRAM_RUNNING) {
-        std::unique_lock<std::mutex> lock(ref_mut);
-        ref_cv.wait(lock, [] { return REFRESH ? true : false; });
-        assert(REFRESH);
-        REFRESH = false;
-        // thread waked when UI must be refreshed
-        // TODO odswiez
-    }
-}
+
+
 
 void parse_args(int argc, char *argv[]) {
     int c;
@@ -118,6 +121,93 @@ void parse_args(int argc, char *argv[]) {
 }
 
 
+void refreshUI() {
+    REFRESH = true;
+    ref_cv.notify_all();
+}
+
+void telnetUI() {
+    struct sockaddr_in server_address;
+    int sock = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
+    if (sock < 0) {
+        perror("socket create error");
+        exit(1);
+    }
+
+    server_address.sin_family = AF_INET;
+    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_address.sin_port = htons(UI_PORT);
+
+    int enable = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+        perror("socket option error");
+        exit(1);
+    }
+
+    if (bind(sock, (struct sockaddr *) &server_address,
+             sizeof(server_address)) < 0) {
+        perror("socket bind error");
+        exit(1);
+    }
+
+    if (listen(sock, QUEUE_LEN) < 0) {
+        perror("socket listen error");
+        exit(1);
+    }
+
+    Menu menu = Menu(sock);
+    cout << "UI: udostepniam telneta\n";
+    while (PROGRAM_RUNNING) {
+        std::unique_lock<std::mutex> lock(ref_mut);
+        ref_cv.wait(lock, [] { return REFRESH ? true : false; });
+        // ktos musi zrobic cv.notify()
+        cout << "UI: obudzono mnie zebym odswiezyl\n";
+        assert(REFRESH); // I`m only thread refreshing UI
+        REFRESH = false;
+        // thread waked when UI must be refreshed
+        menu.display();
+    }
+    if (close(sock) < 0) {
+        err("close error");
+}
+
+
+
+
+void read_and_output() {
+    char buffer[BUFF_LEN];
+    struct ip_mreq ip;
+    struct sockaddr_in trans_addr;
+    socklen_t addr_len = sizeof(trans_addr);
+    trans_addr.sin_family = AF_INET;
+
+    GroupSock data_multi(Type::MULTICAST);
+    while (PROGRAM_RUNNING) {
+        if (STATION_CHANGED) {
+            STATION_CHANGED = false;
+            data_multi.drop_member(ip);
+            act_stat_mut.lock();
+            string name = SHRD_ACT_STATION;
+            act_stat_mut.unlock();
+            Transmitter &tr = std::get<1>(SHRD_TRANSMITTERS[name]);
+            struct ip_mreq ip = data_multi.add_member(tr.mcast.c_str());
+            trans_addr = GroupSock::make_addr(tr.mcast.c_str(), tr.port);
+        }
+        ssize_t rcv_len = recvfrom(data_multi.get_sock(), buffer, sizeof(buffer), 0,
+                               (sockaddr *) &trans_addr, &addr_len);
+        // data pack received, need to fetch session id and first byte
+        if (rcv_len < 0)
+            err("recvfrom");
+        uint64_t sess, fb;
+        memcpy(&sess, buffer, SESS_ID_SIZE);
+        memcpy(&fb, buffer + SESS_ID_SIZE, BYTE_NUM_SIZE);
+        sess = bswap_64(sess);
+        fb = bswap_64(fb);
+        printf("DATA_READ: %llu, %llu,\n", sess, fb);
+    }
+}
+
+
 void read_data(const char *multi_addr, in_port_t port) {
     GroupSock data_multi(Type::MULTICAST);
     struct ip_mreq ip = data_multi.add_member(multi_addr);
@@ -147,25 +237,6 @@ void read_data(const char *multi_addr, in_port_t port) {
 }
 
 
-void czytaj_odp(in_port_t port, int socketix) {
-//    GroupSock sock{};
-//    sock.bind(INADDR_ANY, port);
-
-    ssize_t len;
-    char huj[10000];
-    while (PROGRAM_RUNNING) {
-        len = read(socketix, huj, 10000);
-        assert(len >= 0);
-        cout << "dostalem rexmita: ";
-        uint64_t l1, l2;
-        memcpy(&l1, huj, 8);
-        memcpy(&l2, huj + 8, 8);
-        uint64_t ln1 = bswap_64(l1);
-        uint64_t ln2 = bswap_64(l2);
-        printf("ln1, ln2: %llu, %llu,\n", ln1, ln2);
-        cout << huj;
-    }
-}
 
 void start_playing() {
 
@@ -173,28 +244,23 @@ void start_playing() {
 
 
 void update_sndr_list(char *reply_msg) {
-    //Transmitter
-    bool exists = false;
     stringstream ss(reply_msg);
     string bor, name, addr, port;
 
-    ss >> bor; // BOREWICZ_HERE
-    ss >> addr; // MC_CAST
-    ss >> port; // DATA_PORT
+    ss >> bor >> addr >> port;
     name = ss.str(); // TODO upewnic sie ze nie ma spacji
-    auto it = TRANSMITTERS.find(name);
-    if (it == TRANSMITTERS.end()) {
+
+    auto it = SHRD_TRANSMITTERS.find(name);
+    if (it == SHRD_TRANSMITTERS.end()) {
         // new station
         //cout << "dodaje chuja " << name << "!\n";
         Transmitter tr = Transmitter(addr, (in_port_t) stoi(port));
-        TRANSMITTERS.insert(std::make_pair(name, tr));
+        SHRD_TRANSMITTERS.insert(std::make_pair(name, tr));
+        refreshUI();
     }
     else {
-        exists = true;
         //cout << "uaktualniam chuja " << name << "!\n";
         std::get<1>(*it).last_reply_time = (uint64_t) time(NULL);
-    }
-    if (!exists) { ; // TODO odswiez
     }
 }
 
@@ -247,10 +313,10 @@ void lookup_play() {
             sendto(discv_sock.get_sock(), LOOKUP, strlen(LOOKUP) + 1, 0,
                    (sockaddr *) &BROAD, BROAD_SIZE);
             trans_mut.lock();
-            for (auto &sndr : TRANSMITTERS) {
+            for (auto &sndr : SHRD_TRANSMITTERS) {
                 if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
                     changed_sth = true;
-                    TRANSMITTERS.erase(std::get<0>(sndr));
+                    SHRD_TRANSMITTERS.erase(std::get<0>(sndr));
                 }
             }
             trans_mut.unlock();

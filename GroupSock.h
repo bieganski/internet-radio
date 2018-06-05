@@ -18,12 +18,12 @@ private:
 
     struct sockaddr_in make_addr(uint32_t addr, in_port_t port) const;
 
-    struct sockaddr_in make_addr(const char *addr, in_port_t port) const;
-
 public:
     GroupSock(Type t = BROADCAST, int flags = 0);
 
     ~GroupSock();
+
+    static struct sockaddr_in make_addr(const char *addr, in_port_t port) const;
 
     // all methods below return socket descriptor
 

@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <iostream>
 #include <cassert>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -10,17 +11,21 @@
 using namespace Constants;
 
 
-
 GroupSock::GroupSock(Type t, int flags) : type(t) {
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0)
         err("socket error!");
-    flags = fcntl(sock,F_GETFL);
+    flags = fcntl(sock, F_GETFL);
     flags |= flags;
     fcntl(sock, F_SETFL, flags);
 
+    int optval = 1;
+//    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
+//                   sizeof(int)) < 0)
+//        err("setsockopt(SO_REUSEADDR) failed");
+
     if (type == BROADCAST) {
-        int optval = 1;
+
         if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *) &optval,
                        sizeof optval) < 0)
             err("setsockopt broadcast set error!");
@@ -30,12 +35,12 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
                        sizeof optval) < 0)
             err("setsockopt multicast TTL set error!");
     }
-    else if (type == MULTICAST) {
-        ; // no setsockopt but need to join to any group
+    else if (type == MULTICAST) { ; // need to join to any multicast group
     }
     else { ; // nothing here at this moment
         assert(false);
     }
+    assert(optval == 1);
 }
 
 GroupSock::~GroupSock() {
@@ -113,5 +118,5 @@ void GroupSock::drop_member(struct ip_mreq ip) {
     assert(type == MULTICAST);
     if (setsockopt(sock, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                    (void *) &ip, sizeof ip) < 0)
-        err("setsockopt");
+        std::cout << "drop not existing member\n";
 }
