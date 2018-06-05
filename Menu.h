@@ -4,6 +4,8 @@
 #include <vector>
 #include <cstring>
 #include <string>
+#include <mutex>
+#include <atomic>
 #include <functional>
 
 /**
@@ -25,14 +27,26 @@ class Menu {
 private:
     std::vector<MenuRow> rows;
     size_t marked_row;
-    int sock;
+    std::vector<int> &socks;
+    std::mutex &socks_mut;
+
+    std::atomic<bool> &STATION_CHANGED;
+    std::string &SHRD_ACT_STATION;
+    std::mutex &act_stat_mut;
+    std::string &NAME;
 
     std::string str() const;
 
-    friend class MenuManager;
-
 public:
-    Menu(int sock) : sock(sock), marked_row(0) {};
+    Menu(std::vector<int> &socks, std::mutex &socks_mut,
+         std::atomic<bool> &STATION_CHANGED, std::string &SHRD_ACT_STATION,
+         std::mutex &act_stat_mut, std::string &NAME) :
+        socks_mut(socks_mut),
+        socks(socks),
+        marked_row(0),
+        STATION_CHANGED(STATION_CHANGED),
+        SHRD_ACT_STATION(SHRD_ACT_STATION),
+        act_stat_mut(act_stat_mut), NAME(NAME) {};
 
     void go_up();
 
@@ -40,9 +54,9 @@ public:
 
     void display() const;
 
-    void add_station(std::string name, int sockdesc);
+    void add_station(std::string name);
 
-    void rmv_station(std::string name, int sockdesc);
+    void rmv_station(std::string name);
 
     bool act(const char *action);
 };

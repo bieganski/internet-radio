@@ -57,9 +57,13 @@ std::map<std::string, Transmitter> SHRD_TRANSMITTERS{}; // name identifies trans
 
 std::mutex trans_mut;
 
+std::vector<int> SHRD_SOCKS; // connected to UI sockets
+
+std::mutex socks_mut;
+
 const char *LOOKUP = "ZERO_SEVEN_COME_IN\n";
 
-char *NAME = nullptr; // name of station to be played
+std::string NAME; // name of station to be played
 
 const size_t QUEUE_LEN = 10;
 
@@ -109,9 +113,7 @@ void parse_args(int argc, char *argv[]) {
             case 'n': // transmittor name
                 if (strlen(optarg) >= NAME_LEN)
                     err("-n parameter too long!");
-                NAME = (char *) malloc(NAME_LEN);
-                NAME = strncpy(NAME, optarg, NAME_LEN);
-                NAME[strlen(optarg)] = '\0'; // just to be sure
+                NAME = string(optarg);
                 break;
             default:
                 // getopt handles wrong arguments
@@ -185,6 +187,7 @@ void read_and_output() {
     while (PROGRAM_RUNNING) {
         if (STATION_CHANGED) {
             STATION_CHANGED = false;
+            SHRD_FIFO.
             data_multi.drop_member(ip);
             act_stat_mut.lock();
             string name = SHRD_ACT_STATION;

@@ -17,6 +17,8 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
                                           const char *data, size_t count) {
     std::set<uint64_t> res;
     assert(0 == first_byte % data_len);
+    assert(count == data_len);
+
     while (last() != first_byte) {
         if (first_byte - last() != data_len) {
             push_back(last() + data_len, "", 0);
@@ -27,6 +29,13 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
             push_back(first_byte, data, count);
         }
     }
+
+    // there may be too much elements in rexmit vector, need to check it
+    for (auto it = res.begin(); it != res.end(); ++it) {
+        if (*it == first()) {
+            res.erase(res.begin(), it);
+        }
+    }
     return res;
 }
 
@@ -35,6 +44,7 @@ void AudioFIFO::push_back(uint64_t first_byte, const char *data, size_t count) {
     assert(data_bytes() < fifo_size);
     assert(count == data_len);
     assert(0 == first_byte % data_len);
+
     if (data_bytes() + data_len > fifo_size) // need to pop first
         fifo.pop_front();
     if (!fifo.empty())
