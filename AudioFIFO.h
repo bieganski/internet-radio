@@ -14,9 +14,9 @@ private:
 
     size_t data_bytes() const { return data_len * fifo.size(); }
 
-    ssize_t first() const; // first byte sent kept in queue
+    uint64_t first() const; // first byte sent kept in queue
 
-    ssize_t last() const; // last first byte sent
+    uint64_t last() const; // last first byte sent
 
 public:
     AudioFIFO(size_t data_len, size_t fifo_len) : data_len(data_len),

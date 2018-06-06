@@ -6,9 +6,6 @@
 
 #include "GroupSock.h"
 #include "utils.h"
-#include "consts.hpp"
-
-using namespace Constants;
 
 
 GroupSock::GroupSock(Type t, int flags) : type(t) {
@@ -30,7 +27,7 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
                        sizeof optval) < 0)
             err("setsockopt broadcast set error!");
         // TTL set
-        optval = Constants::TTL_VALUE;
+        optval = 10;
         if (setsockopt(sock, IPPROTO_IP, IP_MULTICAST_TTL, (void *) &optval,
                        sizeof optval) < 0)
             err("setsockopt multicast TTL set error!");

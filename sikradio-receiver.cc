@@ -34,7 +34,7 @@ using namespace TelnetConstants;
 
 std::atomic<bool> PROGRAM_RUNNING(true);
 
-std::atomic<bool> REFRESH(true);
+// std::atomic<bool> REFRESH(true);
 
 
 std::atomic<bool> STATION_CHANGED(false);
@@ -78,7 +78,7 @@ const size_t BUFF_LEN = 5000;
 
 const size_t MAX_TELNET_CONN = 10;
 
-std::atomic<int> connected(0);
+std::atomic<size_t> connected(0);
 
 // TODO !!!!!!!!!!!!! NONBLOCKING O_NONBLOCK
 
@@ -187,6 +187,7 @@ void accept_incoming(int sock) {
 }
 
 void telnetUI() {
+    char ui_buff[100];
     struct sockaddr_in server_address;
     int sock = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
     if (sock < 0) {
@@ -218,56 +219,26 @@ void telnetUI() {
 
     cout << "UI: udostepniam telneta\n";
     while (PROGRAM_RUNNING) {
-        std::unique_lock<std::mutex> lock(ref_mut);
-        ref_cv.wait(lock, [] { return REFRESH ? true : false; });
-        // ktos musi zrobic cv.notify()
-        cout << "UI: obudzono mnie zebym odswiezyl\n";
-        assert(REFRESH); // I`m only thread refreshing UI
-        REFRESH = false;
-        // thread waked when UI must be refreshed
-        menu_mut.lock();
-        SHRD_MENU.display();
-        menu_mut.unlock();
-
-
-
-
-
-
-//        struct pollfd fds;
-//        fds.fd = discv_sock.get_sock();
-//        fds.events = POLLIN;
-//        fds.revents = 0;
-//        char buff[5000];
-//
-//        while (PROGRAM_RUNNING) {
-//            changed_sth = false;
-//            fds.revents = 0;
-//            int ret = poll(&fds, 1, 100); // 5 seconds wait TODO
-//
-//            if (ret == 0) {
-//                // time down, send lookup and maybe delete old stations
-//                // TODO za dlugi lookup
-//                sendto(discv_sock.get_sock(), LOOKUP, strlen(LOOKUP) + 1, 0,
-//                       (sockaddr *) &BROAD, BROAD_SIZE);
-//                trans_mut.lock();
-//                for (auto &sndr : SHRD_TRANSMITTERS) {
-//                    if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
-//                        changed_sth = true;
-//                        SHRD_TRANSMITTERS.erase(std::get<0>(sndr));
-//                    }
-//                }
-//                trans_mut.unlock();
-//            }
-//            else if (ret > 0) { // POLLIN occured
-//                ssize_t read_len = recvfrom(fds.fd, buff, 5000, 0,
-//                                            (sockaddr *) &my_addr, &len);
-//                buff[read_len] = '\0';
-//                assert(fds.events & POLLIN);
-
-
-
+        size_t act_conn = connected.load();
+        for (unsigned i = 0; i < act_conn; i++) {
+            fds[i].revents = 0;
+        }
+        int ret = poll(fds, act_conn, 100); // 5 seconds wait TODO
+        if (ret > 0) { // POLLIN occured
+            cout << "***************UI: szukam pollinow\n";
+            for (unsigned i = 0; i < act_conn; i++) {
+                if (fds[i].revents & POLLIN) {
+                    cout << "----------------UI: zlapalem pollina\n";
+                    ssize_t read_len = read(fds[i].fd, ui_buff, 100);
+                    ui_buff[read_len] = '\0';
+                    menu_mut.lock();
+                    SHRD_MENU.act(ui_buff);
+                    menu_mut.unlock();
+                }
+            }
+        }
     }
+
     if (close(sock) < 0) {
         err("close error");
     }
@@ -300,7 +271,7 @@ void read_and_output() {
             assert(it != SHRD_TRANSMITTERS.end());
             Transmitter &tr = std::get<1>(*it);
             trans_mut.unlock();
-            struct ip_mreq ip = data_multi.add_member(tr.mcast.c_str());
+            ip = data_multi.add_member(tr.mcast.c_str());
             trans_addr = GroupSock::make_addr(tr.mcast.c_str(), tr.port);
         }
         ssize_t rcv_len = recvfrom(data_multi.get_sock(), buffer,
@@ -309,7 +280,6 @@ void read_and_output() {
         // data pack received, need to fetch session id and first byte
         if (rcv_len < 0)
             err("recvfrom");
-        uint64_t sess, fb;
         memcpy(&_SESS_ID, buffer, SESS_ID_SIZE);
         memcpy(&_FIRST_BYTE, buffer + SESS_ID_SIZE, BYTE_NUM_SIZE);
 
@@ -331,13 +301,16 @@ void update_sndr_list(char *reply_msg) {
     string bor, name, addr, port;
 
     ss >> bor >> addr >> port;
-    name = ss.str(); // TODO upewnic sie ze nie ma spacji
+    while(ss >> name);
+    cout << "bor: " << bor << "addr:" << addr << "port: " << port << "name:" << name << "\n";
     trans_mut.lock();
     auto it = SHRD_TRANSMITTERS.find(name);
-    if (it == SHRD_TRANSMITTERS.end()) {
+    auto end = SHRD_TRANSMITTERS.end();
+    trans_mut.unlock();
+    if (it == end) {
         // new station
-        //cout << "dodaje chuja " << name << "!\n";
         Transmitter tr = Transmitter(addr, (in_port_t) stoi(port));
+        trans_mut.lock();
         SHRD_TRANSMITTERS.insert(std::make_pair(name, tr));
         trans_mut.unlock();
         menu_mut.lock();
@@ -346,7 +319,6 @@ void update_sndr_list(char *reply_msg) {
         //refreshUI();
     }
     else {
-        //cout << "uaktualniam chuja " << name << "!\n";
         std::get<1>(*it).last_reply_time = (uint64_t) time(NULL);
     }
 }

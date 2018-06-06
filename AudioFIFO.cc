@@ -20,6 +20,10 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
     assert(0 == first_byte % data_len);
     assert(count == data_len);
     std::cout << "FIFO: wrzucam fb:" << first_byte << "\n";
+    if (fifo.empty()) {
+        push_back(first_byte, data, count);
+        return res;
+    }
     while (last() != first_byte) {
         if (first_byte - last() != data_len) {
             push_back(last() + data_len, "", 0);
@@ -46,7 +50,7 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
 
 
 void AudioFIFO::push_back(uint64_t first_byte, const char *data, size_t count) {
-    assert(data_bytes() < fifo_size);
+    assert(data_bytes() <= fifo_size);
     assert(count == data_len);
     assert(0 == first_byte % data_len);
 
@@ -55,25 +59,26 @@ void AudioFIFO::push_back(uint64_t first_byte, const char *data, size_t count) {
     if (!fifo.empty())
         assert(last() + data_len == first_byte);
     fifo.emplace_back(std::make_pair(first_byte, std::string(data, count)));
-    assert(data_bytes() < fifo_size);
+    assert(data_bytes() <= fifo_size);
 }
 
-ssize_t AudioFIFO::last() const {
-    return fifo.empty() ? -1 : std::get<0>(fifo[fifo.size() - 1]);
+uint64_t AudioFIFO::last() const {
+    assert(!fifo.empty());
+    return std::get<0>(fifo[fifo.size() - 1]);
 }
 
-ssize_t AudioFIFO::first() const {
-    return fifo.empty() ? -1 : last() - data_bytes();
+uint64_t AudioFIFO::first() const {
+    assert(!fifo.empty());
+    return last() - data_bytes();
 }
 
 
 ssize_t AudioFIFO::idx(uint64_t first_byte) {
     if (0 != first_byte % data_len || fifo.empty())
         return -1;
-    ssize_t last = this->last();
-    ssize_t first = this->first();
-    if (last < 0)
-        return -1;
+    uint64_t last = this->last();
+    uint64_t first = this->first();
+
     if (first_byte > last || first_byte < first)
         return -1;
     return (first_byte - first) / data_len;
