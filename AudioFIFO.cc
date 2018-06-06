@@ -1,5 +1,6 @@
 #include <string>
 #include <cassert>
+#include <iostream>
 #include <tuple>
 #include <vector>
 #include <algorithm>
@@ -18,7 +19,7 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
     std::set<uint64_t> res;
     assert(0 == first_byte % data_len);
     assert(count == data_len);
-
+    std::cout << "FIFO: wrzucam fb:" << first_byte << "\n";
     while (last() != first_byte) {
         if (first_byte - last() != data_len) {
             push_back(last() + data_len, "", 0);
@@ -35,6 +36,10 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
         if (*it == first()) {
             res.erase(res.begin(), it);
         }
+    }
+    std::cout << "FIFO: w kolejce są:\n";
+    for (auto it: fifo) {
+        std::cout << it.first;
     }
     return res;
 }
@@ -81,8 +86,11 @@ bool AudioFIFO::complete() const {
     return true;
 }
 
-void AudioFIFO::reinit(size_t data_len) {
+void AudioFIFO::clean() {
     fifo.clear();
+}
+
+void AudioFIFO::reinit(size_t data_len) {
     this->data_len = data_len;
 }
 

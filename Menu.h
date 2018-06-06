@@ -25,6 +25,7 @@ public:
  */
 class Menu {
 private:
+    // TODO porzadek po nazwie - cos kombinowac z setem
     std::vector<MenuRow> rows;
     size_t marked_row;
     std::vector<int> &socks;

@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <sstream>
+#include <cassert>
 
 #include "Menu.h"
 #include "telnet_consts.hpp"
@@ -59,7 +60,8 @@ void Menu::display() const {
 }
 
 void Menu::add_station(std::string name) {
-    ActionType set_station = [](int sockdesc) {
+    assert(!name.empty());
+    ActionType set_station = [&](int sockdesc) {
         act_stat_mut.lock();
         SHRD_ACT_STATION = rows[marked_row].content;
         act_stat_mut.unlock();
@@ -74,6 +76,12 @@ void Menu::add_station(std::string name) {
         marked_row = rows.size() - 1; // lastly added
         act_stat_mut.lock();
         SHRD_ACT_STATION = rows[marked_row].content;
+        act_stat_mut.unlock();
+        STATION_CHANGED = true;
+    }
+    else if (NAME.empty()) { // no preferences, start playing
+        act_stat_mut.lock();
+        SHRD_ACT_STATION = name;
         act_stat_mut.unlock();
         STATION_CHANGED = true;
     }

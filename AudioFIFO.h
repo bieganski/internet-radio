@@ -33,6 +33,8 @@ public:
 
     bool complete() const; // contains consistent bytes sequence
 
+    void clean();
+
     void reinit(size_t data_len); // fifo size doesn't change
 
     bool playing_possible() const; // at least BYTE0 + ⌊BSIZE*3/4⌋ present in queue

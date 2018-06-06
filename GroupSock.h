@@ -16,14 +16,14 @@ private:
     Type type;
     int sock;
 
-    struct sockaddr_in make_addr(uint32_t addr, in_port_t port) const;
-
 public:
     GroupSock(Type t = BROADCAST, int flags = 0);
 
     ~GroupSock();
 
-    static struct sockaddr_in make_addr(const char *addr, in_port_t port) const;
+    static struct sockaddr_in make_addr(in_addr_t addr, in_port_t port);
+
+    static struct sockaddr_in make_addr(const char *addr, in_port_t port);
 
     // all methods below return socket descriptor
 

@@ -49,7 +49,8 @@ std::condition_variable ref_cv;
 
 std::atomic<uint64_t> ACT_SESS(0); // actual session id
 
-AudioFIFO SHRD_FIFO{0, BSIZE}; // buffer fifo, it needs reinit (varing packet length)
+AudioFIFO SHRD_FIFO{0, BSIZE}; // buffer fifo, it needs reinit
+                               // (varing packet length)
 
 std::mutex fifo_mut;
 
@@ -82,7 +83,7 @@ const size_t BUFF_LEN = 5000;
 // TODO NAZWA - ZEBY BYLO WIECEJ JAK JEDNO SLOWO
 
 
-
+// TODO TODO TODO TODO UZYJ DISCOVER PORT
 
 
 void parse_args(int argc, char *argv[]) {
@@ -128,6 +129,35 @@ void refreshUI() {
     ref_cv.notify_all();
 }
 
+
+// TODO reusse addr w wielu miejscach
+
+// TODO usuwanie odlaczonych klientow z vectora
+
+void accept_incoming(int sock) {
+    struct sockaddr_in cli_addr;
+    socklen_t addr_len;
+    if (listen(sock, QUEUE_LEN) < 0) {
+        perror("socket listen error");
+        exit(1);
+    }
+    while (PROGRAM_RUNNING) {
+        printf("waiting for client\n");
+        int msg_sock = accept(sock, (struct sockaddr *) &cli_addr, &addr_len);
+        if (msg_sock < 0) {
+            perror("accept error");
+            exit(1);
+        }
+        int optval = 1;
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
+                   sizeof(int)) < 0)
+            err("setsockopt(SO_REUSEADDR) failed");
+        socks_mut.lock();
+        SHRD_SOCKS.emplace_back(msg_sock);
+        printf("client connected\n");
+    }
+}
+
 void telnetUI() {
     struct sockaddr_in server_address;
     int sock = socket(PF_INET, SOCK_STREAM, 0); // creating IPv4 TCP socket
@@ -152,12 +182,12 @@ void telnetUI() {
         exit(1);
     }
 
-    if (listen(sock, QUEUE_LEN) < 0) {
-        perror("socket listen error");
-        exit(1);
-    }
 
-    Menu menu = Menu(sock);
+
+    Menu menu = Menu(SHRD_SOCKS, socks_mut, STATION_CHANGED, SHRD_ACT_STATION,
+                     act_stat_mut, NAME);
+    std::thread ACCEPT_THREAD(accept_incoming, sock);
+
     cout << "UI: udostepniam telneta\n";
     while (PROGRAM_RUNNING) {
         std::unique_lock<std::mutex> lock(ref_mut);
@@ -171,10 +201,10 @@ void telnetUI() {
     }
     if (close(sock) < 0) {
         err("close error");
+    }
+    ACCEPT_THREAD.join();
+    close(sock);
 }
-
-
-
 
 void read_and_output() {
     char buffer[BUFF_LEN];
@@ -182,67 +212,48 @@ void read_and_output() {
     struct sockaddr_in trans_addr;
     socklen_t addr_len = sizeof(trans_addr);
     trans_addr.sin_family = AF_INET;
+    uint64_t _SESS_ID, _FIRST_BYTE;
+    size_t _PSIZE;
 
     GroupSock data_multi(Type::MULTICAST);
     while (PROGRAM_RUNNING) {
         if (STATION_CHANGED) {
             STATION_CHANGED = false;
-            SHRD_FIFO.
+            fifo_mut.lock();
+            SHRD_FIFO.clean();
+            fifo_mut.unlock();
             data_multi.drop_member(ip);
             act_stat_mut.lock();
             string name = SHRD_ACT_STATION;
             act_stat_mut.unlock();
-            Transmitter &tr = std::get<1>(SHRD_TRANSMITTERS[name]);
+            trans_mut.lock();
+            auto it = SHRD_TRANSMITTERS.find(name);
+            assert(it != SHRD_TRANSMITTERS.end());
+            Transmitter &tr = std::get<1>(*it);
+            trans_mut.unlock();
             struct ip_mreq ip = data_multi.add_member(tr.mcast.c_str());
             trans_addr = GroupSock::make_addr(tr.mcast.c_str(), tr.port);
         }
-        ssize_t rcv_len = recvfrom(data_multi.get_sock(), buffer, sizeof(buffer), 0,
-                               (sockaddr *) &trans_addr, &addr_len);
+        ssize_t rcv_len = recvfrom(data_multi.get_sock(), buffer,
+                                   sizeof(buffer), 0,
+                                   (sockaddr *) &trans_addr, &addr_len);
         // data pack received, need to fetch session id and first byte
         if (rcv_len < 0)
             err("recvfrom");
         uint64_t sess, fb;
-        memcpy(&sess, buffer, SESS_ID_SIZE);
-        memcpy(&fb, buffer + SESS_ID_SIZE, BYTE_NUM_SIZE);
-        sess = bswap_64(sess);
-        fb = bswap_64(fb);
-        printf("DATA_READ: %llu, %llu,\n", sess, fb);
+        memcpy(&_SESS_ID, buffer, SESS_ID_SIZE);
+        memcpy(&_FIRST_BYTE, buffer + SESS_ID_SIZE, BYTE_NUM_SIZE);
+
+        _PSIZE = rcv_len - INFO_LEN;
+        _SESS_ID = bswap_64(_SESS_ID);
+        _FIRST_BYTE = bswap_64(_FIRST_BYTE);
+
+        printf("DATA_READ: sess:%llu, fb:%llu, psize:%u\n", _SESS_ID,
+               _FIRST_BYTE, _PSIZE);
+        fifo_mut.lock();
+        SHRD_FIFO.insert_pack(_FIRST_BYTE, buffer + INFO_LEN, _PSIZE);
+        fifo_mut.unlock();
     }
-}
-
-
-void read_data(const char *multi_addr, in_port_t port) {
-    GroupSock data_multi(Type::MULTICAST);
-    struct ip_mreq ip = data_multi.add_member(multi_addr);
-    data_multi.bind(INADDR_ANY, port);
-
-    ssize_t rcv_len;
-    char buffer[5000]; // TODO const
-
-    /* czytanie tego, co odebrano */
-    while (PROGRAM_RUNNING) {
-        rcv_len = read(data_multi.get_sock(), buffer, sizeof(buffer));
-        assert(rcv_len >= 0);
-        if (rcv_len < 0)
-            err("read");
-        else {
-            printf("read %zd bytes: \n", rcv_len);
-            uint64_t l1, l2;
-            memcpy(&l1, buffer, 8);
-            memcpy(&l2, buffer + 8, 8);
-            uint64_t ln1 = bswap_64(l1);
-            uint64_t ln2 = bswap_64(l2);
-            printf("ln1, ln2: %llu, %llu,\n", ln1, ln2);
-        }
-    }
-
-    data_multi.drop_member(ip);
-}
-
-
-
-void start_playing() {
-
 }
 
 
@@ -268,7 +279,7 @@ void update_sndr_list(char *reply_msg) {
 }
 
 
-void lookup_play() {
+void lookup() {
     GroupSock discv_sock{};
     // TODO te 2 linijki powiunny byc.... zamiast sendto
 //    discv_sock.bind(DISCOVER_ADDR, CTRL_PORT);
@@ -427,14 +438,16 @@ int main(int argc, char *argv[]) {
 #endif
 
 int main(int argc, char *argv[]) {
-    /* argumenty wywołania programu */
-    char *multicast_dotted_address;
-    in_port_t local_port;
+    cout << "UI: " << UI_PORT << "\n";
+    parse_args(argc, argv);
 
-    if (argc != 3)
-        err("Usage: %s multicast_dotted_address local_port");
-    multicast_dotted_address = argv[1];
-    local_port = (in_port_t) atoi(argv[2]);
+    std::thread LOOKUP_THREAD(lookup);
+    std::thread UI_THREAD(telnetUI);
+    std::thread OUTPUT_THREAD(read_and_output);
 
-    lookup_play();
+    LOOKUP_THREAD.join();
+    UI_THREAD.join();
+    OUTPUT_THREAD.join();
+
+    return 0;
 }

@@ -6,6 +6,8 @@
 #include <netinet/in.h>
 #include "recv_consts.hpp"
 
+// TODO uaktualnianie danych o transmitterze przy czytaniu
+
 class Transmitter {
 public:
     std::string mcast;

@@ -20,9 +20,9 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
     fcntl(sock, F_SETFL, flags);
 
     int optval = 1;
-//    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
-//                   sizeof(int)) < 0)
-//        err("setsockopt(SO_REUSEADDR) failed");
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
+                   sizeof(int)) < 0)
+        err("setsockopt(SO_REUSEADDR) failed");
 
     if (type == BROADCAST) {
 
@@ -49,8 +49,7 @@ GroupSock::~GroupSock() {
     }
 }
 
-struct sockaddr_in
-GroupSock::make_addr(const char *addr, in_port_t port) const {
+struct sockaddr_in GroupSock::make_addr(const char *addr, in_port_t port) {
     struct sockaddr_in addr_in;
     addr_in.sin_family = AF_INET;
     addr_in.sin_port = htons(port);
@@ -60,7 +59,7 @@ GroupSock::make_addr(const char *addr, in_port_t port) const {
 }
 
 
-struct sockaddr_in GroupSock::make_addr(in_addr_t addr, in_port_t port) const {
+struct sockaddr_in GroupSock::make_addr(in_addr_t addr, in_port_t port) {
     struct in_addr ip_addr;
     ip_addr.s_addr = addr;
     return make_addr(inet_ntoa(ip_addr), port);
