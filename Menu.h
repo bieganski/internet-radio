@@ -6,55 +6,53 @@
 #include <string>
 #include <mutex>
 #include <atomic>
+#include <map>
 #include <functional>
 
-/**
- * Each menu row has it's own class keeping std::function
- * object with instructions after beinig chosed.
- */
-class MenuRow {
-public:
-    std::string content;
-    std::function<bool(int)> act; // executed after being chosed
-    MenuRow(const char *text, std::function<bool(int)> act) :
-        content{std::string(text)}, act{std::move(act)} {};
-};
+#include "Transmitter.h"
+
 
 /**
- * Simply keeps each option and remembers marked row.
+ * Keeps each option and remembers marked row.
  */
 class Menu {
 private:
-    // TODO porzadek po nazwie - cos kombinowac z setem
-    std::vector<MenuRow> rows;
+    std::vector<std::string> rows;
     size_t marked_row;
     std::vector<int> &socks;
     std::mutex &socks_mut;
-
     std::atomic<bool> &STATION_CHANGED;
     std::string &SHRD_ACT_STATION;
     std::mutex &act_stat_mut;
     std::string &NAME;
+    std::map<std::string, Transmitter> &SHRD_TRANSMITTERS; // name identifies transmitter
+    std::mutex &trans_mut;
 
     std::string str() const;
+
+    void set_station();
 
 public:
     Menu(std::vector<int> &socks, std::mutex &socks_mut,
          std::atomic<bool> &STATION_CHANGED, std::string &SHRD_ACT_STATION,
-         std::mutex &act_stat_mut, std::string &NAME) :
+         std::mutex &act_stat_mut, std::string &NAME,
+         std::map<std::string, Transmitter> &SHRD_TRANSMITTERS,
+         std::mutex &trans_mut) :
         marked_row(0),
         socks(socks),
         socks_mut(socks_mut),
         STATION_CHANGED(STATION_CHANGED),
         SHRD_ACT_STATION(SHRD_ACT_STATION),
         act_stat_mut(act_stat_mut),
-        NAME(NAME) {};
+        NAME(NAME),
+        SHRD_TRANSMITTERS(SHRD_TRANSMITTERS),
+        trans_mut(trans_mut) {};
 
     void go_up();
 
     void go_down();
 
-    void display() const;
+    void display();
 
     void add_station(std::string name);
 

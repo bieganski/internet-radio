@@ -9,15 +9,11 @@ namespace Send_Consts {
 
     const size_t INFO_LEN = SESS_ID_SIZE + BYTE_NUM_SIZE;
 
-    const int TTL_VALUE = 10;
-
     static unsigned int MY_IDX = 385162; // mb385162
 
     static in_port_t DATA_PORT = (in_port_t) (20000 + (MY_IDX % 10000));
 
     static in_port_t CTRL_PORT = (in_port_t) (30000 + (MY_IDX % 10000));
-
-    static in_port_t UI_PORT = (in_port_t) (10000 + (MY_IDX % 10000));
 
     static unsigned PSIZE = 512;
 

@@ -11,8 +11,6 @@ namespace Recv_Consts {
 
     const size_t INFO_LEN = SESS_ID_SIZE + BYTE_NUM_SIZE;
 
-    const int TTL_VALUE = 10;
-
     static unsigned MY_IDX = 385162; // mb385162
 
     static char DISCOVER_ADDR[] = "255.255.255.255"; // fixed length

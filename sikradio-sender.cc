@@ -48,7 +48,6 @@ char ctrl_buff[BUF_DEF_SIZE];
 
 // these not in consts file because of varying size
 char *MCAST_ADDR = nullptr;
-char *NAME = nullptr;
 const size_t NAME_LEN = 64;
 uint64_t SESS_ID; // session id
 
@@ -60,6 +59,9 @@ std::mutex rexmit_mut;
 
 std::atomic<bool> PROGRAM_RUNNING(true);
 
+const char *DEFAULT_NAME = "Nienazwany Nadajnik";
+std::string NAME;
+
 bool proper_ip(const char *str) {
     struct sockaddr_in sa;
     int result = inet_pton(AF_INET, str, &(sa.sin_addr));
@@ -69,6 +71,7 @@ bool proper_ip(const char *str) {
 void parse_args(int argc, char *argv[]) {
     int c;
     unsigned tmp;
+    stringstream ss;
     while ((c = getopt(argc, argv, "a:P:C:p:f:R:n:")) != -1) {
         switch (c) {
             case 'a': // broadcast adress
@@ -98,10 +101,14 @@ void parse_args(int argc, char *argv[]) {
                 RTIME = get_pos_nr_or_err(optarg);
                 break;
             case 'n': // transmittor name
-                if (strlen(optarg) >= NAME_LEN)
+                for ( ;optind < argc && *argv[optind] != '-'; optind++){
+                    ss << argv[optind];
+                    if (argc - 1 != optind)
+                        ss << " ";
+                }
+                NAME = ss.str();
+                if (NAME.size() >= NAME_LEN)
                     err("Transmitter name too long.");
-                NAME = strncpy(NAME, optarg, NAME_LEN);
-                NAME[strlen(optarg)] = '\0'; // just to be sure
                 break;
             default:
                 // getopt handles wrong arguments
@@ -283,10 +290,8 @@ void recv_ctrl_packs() {
 
 int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(nullptr);
-    const char *DEFAULT_NAME = "Nienazwany Nadajnik";
-    NAME = (char *) malloc(NAME_LEN);
-    memcpy(NAME, DEFAULT_NAME, strlen(DEFAULT_NAME) + 1); // parsing may change
-    assert(NAME[strlen(DEFAULT_NAME)] == '\0');
+
+    string NAME = string(DEFAULT_NAME);
     parse_args(argc, argv);
 
 
@@ -300,6 +305,5 @@ int main(int argc, char *argv[]) {
     // PROGRAM_RUNNING = false;
     assert(PROGRAM_RUNNING == true);
     CTRL_THREAD.join();
-    free(NAME);
     return 0;
 }

@@ -66,7 +66,7 @@ std::mutex socks_mut;
 std::string NAME; // name of station to be played
 
 Menu SHRD_MENU = Menu(SHRD_SOCKS, socks_mut, STATION_CHANGED, SHRD_ACT_STATION,
-                      act_stat_mut, NAME);
+                      act_stat_mut, NAME, SHRD_TRANSMITTERS, trans_mut);
 
 std::mutex menu_mut;
 
@@ -78,7 +78,9 @@ const size_t BUFF_LEN = 5000;
 
 const size_t MAX_TELNET_CONN = 10;
 
-std::atomic<size_t> connected(0);
+const size_t TIMEOUT = 20; // seconds
+
+std::atomic<size_t> connected{0};
 
 // TODO !!!!!!!!!!!!! NONBLOCKING O_NONBLOCK
 
@@ -103,6 +105,7 @@ void signalHandler(int signum) {
 void parse_args(int argc, char *argv[]) {
     int c;
     unsigned tmp;
+    stringstream ss;
     while ((c = getopt(argc, argv, "d:C:U:b:R:n:")) != -1) {
         switch (c) {
             case 'd': // discover address
@@ -126,9 +129,14 @@ void parse_args(int argc, char *argv[]) {
                 RTIME = get_pos_nr_or_err(optarg);
                 break;
             case 'n': // transmittor name
-                if (strlen(optarg) >= NAME_LEN)
-                    err("-n parameter too long!");
-                NAME = string(optarg);
+                for (; optind < argc && *argv[optind] != '-'; optind++) {
+                    ss << argv[optind];
+                    if (argc - 1 != optind)
+                        ss << " ";
+                }
+                NAME = ss.str();
+                if (NAME.size() >= NAME_LEN)
+                    err("Transmitter name too long.");
                 break;
             default:
                 // getopt handles wrong arguments
@@ -178,7 +186,7 @@ void accept_incoming(int sock) {
             err("negotiate error");
         }
         socks_mut.lock();
-        cout << "ACC: wrzucam " << msg_sock << "do listy podlaczonych\n";
+        //cout << "ACC: wrzucam " << msg_sock << "do listy podlaczonych\n";
         SHRD_SOCKS.emplace_back(msg_sock);
         socks_mut.unlock();
         printf("client connected\n");
@@ -220,15 +228,19 @@ void telnetUI() {
     cout << "UI: udostepniam telneta\n";
     while (PROGRAM_RUNNING) {
         size_t act_conn = connected.load();
+        socks_mut.lock();
         for (unsigned i = 0; i < act_conn; i++) {
+            fds[i].events = POLLIN;
             fds[i].revents = 0;
+            fds[i].fd = SHRD_SOCKS[i];
         }
+        socks_mut.unlock();
         int ret = poll(fds, act_conn, 100); // 5 seconds wait TODO
         if (ret > 0) { // POLLIN occured
-            cout << "***************UI: szukam pollinow\n";
+            //cout << "***************UI: szukam pollinow\n";
             for (unsigned i = 0; i < act_conn; i++) {
                 if (fds[i].revents & POLLIN) {
-                    cout << "----------------UI: zlapalem pollina\n";
+                    //cout << "----------------UI: zlapalem pollina\n";
                     ssize_t read_len = read(fds[i].fd, ui_buff, 100);
                     ui_buff[read_len] = '\0';
                     menu_mut.lock();
@@ -239,11 +251,12 @@ void telnetUI() {
         }
     }
 
-    if (close(sock) < 0) {
+    if (close(sock) < 0)
         err("close error");
-    }
     ACCEPT_THREAD.join();
-    close(sock);
+    for (auto i : SHRD_SOCKS)
+        if (close(i) < 0)
+            err("close error");
 }
 
 void read_and_output() {
@@ -298,11 +311,14 @@ void read_and_output() {
 
 void update_sndr_list(char *reply_msg) {
     stringstream ss(reply_msg);
-    string bor, name, addr, port;
-
+    string bor, addr, port, name, tmp_name;
     ss >> bor >> addr >> port;
-    while(ss >> name);
-    cout << "bor: " << bor << "addr:" << addr << "port: " << port << "name:" << name << "\n";
+    ss >> tmp_name;
+    while (ss >> tmp_name) {
+        name.append(" ");
+        name.append(tmp_name);
+    }
+    //cout << "bor: " << bor << "addr:" << addr << "port: " << port << "name:" << name << "\n";
     trans_mut.lock();
     auto it = SHRD_TRANSMITTERS.find(name);
     auto end = SHRD_TRANSMITTERS.end();
@@ -354,7 +370,6 @@ void lookup() {
 //    cout << "KURWA: WCZYTALEM " << huj;
 //
 
-    bool changed_sth;
     struct pollfd fds;
     fds.fd = discv_sock.get_sock();
     fds.events = POLLIN;
@@ -362,7 +377,6 @@ void lookup() {
     char buff[5000];
 
     while (PROGRAM_RUNNING) {
-        changed_sth = false;
         fds.revents = 0;
         int ret = poll(&fds, 1, 100); // 5 seconds wait TODO
 
@@ -373,13 +387,14 @@ void lookup() {
                    (sockaddr *) &BROAD, BROAD_SIZE);
             trans_mut.lock();
             for (auto &sndr : SHRD_TRANSMITTERS) {
-                if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
-                    changed_sth = true;
+                if (time(NULL) - std::get<1>(sndr).last_reply_time >= TIMEOUT) {
+                    // old one, need to delete it
                     // TODO tu moze sie blokowac
                     SHRD_TRANSMITTERS.erase(std::get<0>(sndr));
                     menu_mut.lock();
                     SHRD_MENU.rmv_station(std::get<0>(sndr));
                     menu_mut.unlock();
+                    SHRD_MENU.display();
                 }
             }
             trans_mut.unlock();
@@ -399,6 +414,7 @@ void lookup() {
                     break;
                 case (Mess::REPLY):
                     // only message I react to
+                    cout << "CTRL: REPLY: " << buff << "\n";
                     update_sndr_list(buff);
                     break;
                 case (Mess::UNKNOWN):

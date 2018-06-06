@@ -8,27 +8,30 @@
 
 using namespace TelnetConstants;
 
-using ActionType = std::function<bool(int)>;
+using ActionType = std::function<bool()>;
+
+
+void Menu::set_station() {
+    act_stat_mut.lock();
+    SHRD_ACT_STATION = rows[marked_row];
+    act_stat_mut.unlock();
+    STATION_CHANGED = true;
+    display();
+}
+
 
 void Menu::go_up() {
     if (marked_row > 0) {
         marked_row -= 1;
-        act_stat_mut.lock();
-        SHRD_ACT_STATION = rows[marked_row].content;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-        display();
+        set_station();
     }
 }
+
 
 void Menu::go_down() {
     if (marked_row < rows.size() - 1) {
         marked_row += 1;
-        act_stat_mut.lock();
-        SHRD_ACT_STATION = rows[marked_row].content;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-        display();
+        set_station();
     }
 }
 
@@ -39,20 +42,30 @@ std::string Menu::str() const {
     std::string marked = std::string("  > ");
     std::stringstream res;
     res << panel << "SIK Radio\r\n" << panel;
+    act_stat_mut.lock();
+    std::string act_station = SHRD_ACT_STATION;
+    act_stat_mut.unlock();
     for (size_t i = 0; i < rows.size(); i++) {
-        if (i == marked_row)
+        if (act_station.empty() && i == 0)
+            res << marked;
+        else if (rows[i] == act_station)
             res << marked;
         else
             res << not_marked;
-        res << rows[i].content.c_str() << "\r\n";
+        res << rows[i].c_str() << "\r\n";
     }
     res << panel;
     return res.str();
 }
 
-void Menu::display() const {
+void Menu::display() {
+    trans_mut.lock();
+    rows.clear();
+    for (const auto &i : SHRD_TRANSMITTERS) {
+        rows.emplace_back(std::string(std::get<0>(i)));
+    }
+    trans_mut.unlock();
     std::string new_menu = this->str();
-    std::cout << "MENU: <<<<< będę rysował\n";
     socks_mut.lock();
     for (auto i : socks) {
         std::cout << "MENU: rysuje do socketa " << i << "\n";
@@ -64,49 +77,13 @@ void Menu::display() const {
 
 void Menu::add_station(std::string name) {
     assert(!name.empty());
-    ActionType set_station = [&](int sockdesc) {
-        act_stat_mut.lock();
-        SHRD_ACT_STATION = rows[marked_row].content;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-        display();
-        return true;
-    };
     if (rows.empty())
         marked_row = 0;
-    rows.emplace_back(MenuRow(name.c_str(), set_station));
-    if (NAME == name) {
-        marked_row = rows.size() - 1; // lastly added
-        act_stat_mut.lock();
-        SHRD_ACT_STATION = rows[marked_row].content;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-    }
-    else if (NAME.empty()) { // no preferences, start playing
-        act_stat_mut.lock();
-        SHRD_ACT_STATION = name;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-    }
     display();
 }
 
 void Menu::rmv_station(std::string name) {
-    MenuRow &mr = rows[marked_row];
-    if (name == mr.content) {
-        // deleting actually played station
-        act_stat_mut.lock();
-        if (rows.size() == 1)
-            SHRD_ACT_STATION = std::string(); // that was last station, now none
-        else
-            SHRD_ACT_STATION = rows[0].content;
-        act_stat_mut.unlock();
-        STATION_CHANGED = true;
-    }
-    for (auto it = rows.begin(); it != rows.end(); ++it) {
-        if (it->content == name)
-            rows.erase(it);
-    }
+    marked_row = 0;
     display();
 }
 
