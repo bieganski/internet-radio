@@ -15,6 +15,7 @@
 #include <cassert>
 #include <mutex>
 #include <condition_variable>
+#include <csignal>
 
 #include "telnet_consts.hpp"
 #include "utils.h"
@@ -50,7 +51,7 @@ std::condition_variable ref_cv;
 std::atomic<uint64_t> ACT_SESS(0); // actual session id
 
 AudioFIFO SHRD_FIFO{0, BSIZE}; // buffer fifo, it needs reinit
-                               // (varing packet length)
+// (varing packet length)
 
 std::mutex fifo_mut;
 
@@ -62,15 +63,22 @@ std::vector<int> SHRD_SOCKS; // connected to UI sockets
 
 std::mutex socks_mut;
 
-const char *LOOKUP = "ZERO_SEVEN_COME_IN\n";
-
 std::string NAME; // name of station to be played
+
+Menu SHRD_MENU = Menu(SHRD_SOCKS, socks_mut, STATION_CHANGED, SHRD_ACT_STATION,
+                      act_stat_mut, NAME);
+
+std::mutex menu_mut;
+
+const char *LOOKUP = "ZERO_SEVEN_COME_IN\n";
 
 const size_t QUEUE_LEN = 10;
 
 const size_t BUFF_LEN = 5000;
 
+const size_t MAX_TELNET_CONN = 10;
 
+std::atomic<int> connected(0);
 
 // TODO !!!!!!!!!!!!! NONBLOCKING O_NONBLOCK
 
@@ -85,6 +93,12 @@ const size_t BUFF_LEN = 5000;
 
 // TODO TODO TODO TODO UZYJ DISCOVER PORT
 
+
+void signalHandler(int signum) {
+    cout << "\nI received signal (" << signum << "). Close all connections.\n";
+    PROGRAM_RUNNING = false;
+    exit(signum);
+}
 
 void parse_args(int argc, char *argv[]) {
     int c;
@@ -125,8 +139,9 @@ void parse_args(int argc, char *argv[]) {
 
 
 void refreshUI() {
-    REFRESH = true;
-    ref_cv.notify_all();
+    menu_mut.lock();
+    SHRD_MENU.display();
+    menu_mut.unlock();
 }
 
 
@@ -148,13 +163,26 @@ void accept_incoming(int sock) {
             perror("accept error");
             exit(1);
         }
+
+        ++connected;
+        if (connected == MAX_TELNET_CONN)
+            return;
+
         int optval = 1;
         if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
-                   sizeof(int)) < 0)
+                       sizeof(int)) < 0)
             err("setsockopt(SO_REUSEADDR) failed");
+        // configuring telnet
+        if (write(msg_sock, NEGOTIATE, strlen(NEGOTIATE)) !=
+            strlen(NEGOTIATE)) {
+            err("negotiate error");
+        }
         socks_mut.lock();
+        cout << "ACC: wrzucam " << msg_sock << "do listy podlaczonych\n";
         SHRD_SOCKS.emplace_back(msg_sock);
+        socks_mut.unlock();
         printf("client connected\n");
+        refreshUI();
     }
 }
 
@@ -183,10 +211,10 @@ void telnetUI() {
     }
 
 
-
-    Menu menu = Menu(SHRD_SOCKS, socks_mut, STATION_CHANGED, SHRD_ACT_STATION,
-                     act_stat_mut, NAME);
     std::thread ACCEPT_THREAD(accept_incoming, sock);
+
+    struct pollfd fds[MAX_TELNET_CONN];
+
 
     cout << "UI: udostepniam telneta\n";
     while (PROGRAM_RUNNING) {
@@ -197,7 +225,48 @@ void telnetUI() {
         assert(REFRESH); // I`m only thread refreshing UI
         REFRESH = false;
         // thread waked when UI must be refreshed
-        menu.display();
+        menu_mut.lock();
+        SHRD_MENU.display();
+        menu_mut.unlock();
+
+
+
+
+
+
+//        struct pollfd fds;
+//        fds.fd = discv_sock.get_sock();
+//        fds.events = POLLIN;
+//        fds.revents = 0;
+//        char buff[5000];
+//
+//        while (PROGRAM_RUNNING) {
+//            changed_sth = false;
+//            fds.revents = 0;
+//            int ret = poll(&fds, 1, 100); // 5 seconds wait TODO
+//
+//            if (ret == 0) {
+//                // time down, send lookup and maybe delete old stations
+//                // TODO za dlugi lookup
+//                sendto(discv_sock.get_sock(), LOOKUP, strlen(LOOKUP) + 1, 0,
+//                       (sockaddr *) &BROAD, BROAD_SIZE);
+//                trans_mut.lock();
+//                for (auto &sndr : SHRD_TRANSMITTERS) {
+//                    if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
+//                        changed_sth = true;
+//                        SHRD_TRANSMITTERS.erase(std::get<0>(sndr));
+//                    }
+//                }
+//                trans_mut.unlock();
+//            }
+//            else if (ret > 0) { // POLLIN occured
+//                ssize_t read_len = recvfrom(fds.fd, buff, 5000, 0,
+//                                            (sockaddr *) &my_addr, &len);
+//                buff[read_len] = '\0';
+//                assert(fds.events & POLLIN);
+
+
+
     }
     if (close(sock) < 0) {
         err("close error");
@@ -263,14 +332,18 @@ void update_sndr_list(char *reply_msg) {
 
     ss >> bor >> addr >> port;
     name = ss.str(); // TODO upewnic sie ze nie ma spacji
-
+    trans_mut.lock();
     auto it = SHRD_TRANSMITTERS.find(name);
     if (it == SHRD_TRANSMITTERS.end()) {
         // new station
         //cout << "dodaje chuja " << name << "!\n";
         Transmitter tr = Transmitter(addr, (in_port_t) stoi(port));
         SHRD_TRANSMITTERS.insert(std::make_pair(name, tr));
-        refreshUI();
+        trans_mut.unlock();
+        menu_mut.lock();
+        SHRD_MENU.add_station(name);
+        menu_mut.unlock();
+        //refreshUI();
     }
     else {
         //cout << "uaktualniam chuja " << name << "!\n";
@@ -330,7 +403,11 @@ void lookup() {
             for (auto &sndr : SHRD_TRANSMITTERS) {
                 if (time(NULL) - std::get<1>(sndr).last_reply_time >= 20) {
                     changed_sth = true;
+                    // TODO tu moze sie blokowac
                     SHRD_TRANSMITTERS.erase(std::get<0>(sndr));
+                    menu_mut.lock();
+                    SHRD_MENU.rmv_station(std::get<0>(sndr));
+                    menu_mut.unlock();
                 }
             }
             trans_mut.unlock();
@@ -438,6 +515,7 @@ int main(int argc, char *argv[]) {
 #endif
 
 int main(int argc, char *argv[]) {
+    //signal(SIGINT, signalHandler);
     cout << "UI: " << UI_PORT << "\n";
     parse_args(argc, argv);
 

@@ -25,7 +25,7 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
         err("setsockopt(SO_REUSEADDR) failed");
 
     if (type == BROADCAST) {
-
+        optval = 1;
         if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *) &optval,
                        sizeof optval) < 0)
             err("setsockopt broadcast set error!");
@@ -40,7 +40,6 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
     else { ; // nothing here at this moment
         assert(false);
     }
-    assert(optval == 1);
 }
 
 GroupSock::~GroupSock() {

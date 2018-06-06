@@ -140,7 +140,7 @@ void read_and_send() {
     uint64_t first_byte = 0;
     ssize_t len;
     int symulacja;
-    symulacja = open("duzy", O_RDONLY);
+    symulacja = open("/dev/zero", O_RDONLY);
     do {
         //len = read(STDIN_FILENO, buff, PSIZE);
         len = read(symulacja, data_buff, PSIZE);
@@ -185,12 +185,12 @@ void send_rexmit(int sock) {
     TO_REXMIT = TO_REXMIT_TMP;
     TO_REXMIT_TMP.clear();
     rexmit_mut.unlock(); // let other thread add to tmp set
-    cout << "okej, szykuje sie do wysylania\n";
+    cout << "REX: okej, szykuje sie do wysylania\n";
     for (uint64_t fb : TO_REXMIT) {
         ssize_t data_idx = FIFO.idx(fb);
-        cout << "OMG: IDX " << data_idx << "\n";
+        cout << "REX: wysylam IDX " << data_idx << "\n";
         if (data_idx >= 0) { // else none in queue
-            cout << "REX_SEND: fb=" << fb << ", len=" << FIFO[data_idx].size()
+            cout << "REX: fb=" << fb << ", len=" << FIFO[data_idx].size()
                  << "\n";
             send_data_udp(sock, fb, FIFO[data_idx].c_str());
         }
@@ -202,7 +202,7 @@ void send_lookup_response(int sock, struct sockaddr_in * addr) {
     stringstream ss;
     ss << "BOREWICZ_HERE " << MCAST_ADDR << " " << DATA_PORT <<
        " " << NAME << "\n";
-    cout << "wysylam chuja\n";
+    cout << "LOOK: wysylam swoje dane\n";
     sendto(sock, ss.str().c_str(), ss.str().size(), 0, (sockaddr*)addr, sizeof(*addr));
     // write(sock, ss.str().c_str(), ss.str().size());
 }
@@ -249,7 +249,7 @@ void recv_ctrl_packs() {
             socklen_t roz = sizeof(lol);
             len = recvfrom(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE, 0,
                            (sockaddr *)&lol, &roz);
-            cout << "UWAGA: DOSTALEM PORT" << ntohs(lol.sin_port) << "A adres " << ntohl(lol.sin_addr.s_addr);
+            //cout << "UWAGA: DOSTALEM PORT" << ntohs(lol.sin_port) << "A adres " << ntohl(lol.sin_addr.s_addr);
             ctrl_buff[len] = '\0'; // just to be sure
             MessageParser mp;
             switch (mp.parse(ctrl_buff)) {
@@ -295,7 +295,6 @@ int main(int argc, char *argv[]) {
     //CTRL_THREAD.detach();
 
     // TEN CZYTA Z WEJSCIA I WYSYLA DANE
-    while (true);
     read_and_send();
 
     // PROGRAM_RUNNING = false;

@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <cassert>
+#include <iostream>
 
 #include "Menu.h"
 #include "telnet_consts.hpp"
@@ -33,11 +34,11 @@ void Menu::go_down() {
 
 std::string Menu::str() const {
     std::string panel = std::string(
-        "------------------------------------------------------------------------\n");
+        "------------------------------------------------------------------------\r\n");
     std::string not_marked = std::string("    ");
     std::string marked = std::string("  > ");
     std::stringstream res;
-    res << panel << "SIK Radio\n" << panel;
+    res << panel << "SIK Radio\r\n" << panel;
     for (size_t i = 0; i < rows.size(); i++) {
         if (i == marked_row)
             res << marked;
@@ -50,10 +51,12 @@ std::string Menu::str() const {
 }
 
 void Menu::display() const {
+    std::string new_menu = this->str();
+    std::cout << "MENU: <<<<< będę rysował\n";
     socks_mut.lock();
     for (auto i : socks) {
+        std::cout << "MENU: rysuje do socketa " << i << "\n";
         write(i, CLEAR, strlen(CLEAR));
-        std::string new_menu = this->str();
         write(i, new_menu.c_str(), new_menu.size());
     }
     socks_mut.unlock();
@@ -99,8 +102,12 @@ void Menu::rmv_station(std::string name) {
             SHRD_ACT_STATION = rows[0].content;
         act_stat_mut.unlock();
         STATION_CHANGED = true;
-        display();
     }
+    for (auto it = rows.begin(); it != rows.end(); ++it) {
+        if (it->content == name)
+            rows.erase(it);
+    }
+    display();
 }
 
 bool Menu::act(const char *action) {
