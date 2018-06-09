@@ -7,4 +7,6 @@ extern bool is_positive_number(const char *str);
 
 extern unsigned get_pos_nr_or_err(const char *str);
 
+extern bool proper_ip(const char *str);
+
 #endif // _UTILS_H

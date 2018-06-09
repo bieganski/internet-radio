@@ -10,7 +10,6 @@ namespace Mess {
 }
 
 
-
 class MessageParser {
     std::vector <std::pair<Mess::Message, std::regex>> mess_vec;
 

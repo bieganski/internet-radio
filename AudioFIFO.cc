@@ -29,7 +29,6 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
     if (idx(first_byte) >= 0) {
         // exists in queue, probably rexmit being pushed
         std::get<1>(fifo[idx(first_byte)]) = std::string(data, count);
-        std::cout << "wrzucilem rexmit " << first_byte << " do kolejki!\n";
         return res;
     }
 
@@ -57,7 +56,10 @@ std::set<uint64_t> AudioFIFO::insert_pack(uint64_t first_byte,
 
 void AudioFIFO::push_back(uint64_t first_byte, const char *data, size_t count) {
     assert(data_bytes() <= fifo_size);
-    assert(count == data_len);
+    if (count != data_len) {
+        std::cout << "count: " << count << ", data: " << data_len << "\n";
+        assert(false);
+    }
     assert(0 == first_byte % data_len);
 
     if (data_bytes() + data_len > fifo_size) // need to pop first
@@ -115,10 +117,6 @@ bool AudioFIFO::playing_possible() const {
     return last() >= first() + (fifo_size * 3 / 4);
 }
 
-size_t AudioFIFO::pack_len() {
-    return data_len;
-}
-
 std::pair<uint64_t, std::string> AudioFIFO::str() {
     assert(this->complete());
     uint64_t first_byte = std::get<0>(fifo[0]);
@@ -132,7 +130,7 @@ std::pair<uint64_t, std::string> AudioFIFO::str(uint64_t first_byte) {
     if (fb_idx < 0) {
         return std::make_pair((uint64_t) 0, std::string{}); // empty string -end
     }
-    for (ssize_t i = fb_idx; i < fifo.size(); i++)
+    for (size_t i = (size_t) fb_idx; i < fifo.size(); i++)
         ss << std::get<1>(fifo[i]);
     return std::make_pair(std::get<0>(fifo[fifo.size() - 1]), ss.str());
 }

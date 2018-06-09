@@ -8,8 +8,6 @@
 
 using namespace TelnetConstants;
 
-// TODO ARPA TELNET
-
 using ActionType = std::function<bool()>;
 
 std::string Menu::str() const {

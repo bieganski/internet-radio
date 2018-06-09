@@ -1,6 +1,5 @@
 #include "MessageParser.h"
 
-// TODO ocztywiscie \0
 MessageParser::MessageParser() {
     // that regexes aren't completely proper, need to be checked more precisely
     std::string ip_reg = std::string(

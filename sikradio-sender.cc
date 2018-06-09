@@ -55,11 +55,6 @@ std::atomic<bool> PROGRAM_RUNNING(true);
 
 std::string NAME = std::string{"Nienazwany Nadajnik"};
 
-bool proper_ip(const char *str) {
-    struct sockaddr_in sa;
-    int result = inet_pton(AF_INET, str, &(sa.sin_addr));
-    return result != 0;
-}
 
 void parse_args(int argc, char *argv[]) {
     int c;
@@ -131,7 +126,7 @@ void send_data_udp(int sock, uint64_t first_byte_num, const char *data) {
     uint64_t first_byte_net = bswap_64(first_byte_num);
     memcpy(help_buff, &sess_net, sizeof(uint64_t));
     memcpy(help_buff + SESS_ID_SIZE, &first_byte_net, sizeof(uint64_t));
-    write(sock, help_buff, PSIZE + INFO_LEN); // UDP send
+    write(sock, help_buff, INFO_LEN + PSIZE); // UDP send
 }
 
 /**
@@ -175,6 +170,24 @@ void read_and_send() {
     } while (len > 0);
 }
 
+//void read_and_send() {
+//    GroupSock data_sock{};
+//    data_sock.connect(MCAST_ADDR, DATA_PORT);
+//
+//    uint64_t first_byte = 0;
+//    ssize_t len;
+//    do {
+//        len = read(STDIN_FILENO, data_buff, PSIZE);
+//        if (len != PSIZE) {
+//            //finish_job();
+//        }
+//        else {
+//            send_data_udp(data_sock.get_sock(), first_byte, data_buff);
+//            FIFO.push_back(first_byte, data_buff, PSIZE);
+//            first_byte += len;
+//        }
+//    } while (len > 0);
+//}
 
 void parse_rexmit(const char *str) {
     string mess = string(str);

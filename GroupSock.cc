@@ -88,6 +88,7 @@ int GroupSock::connect(in_addr_t addr, in_port_t port) {
     return sock;
 }
 
+
 int GroupSock::bind(const char *addr, in_port_t port) {
     struct sockaddr_in addr_in = make_addr(addr, port);
     if (::bind(sock, (struct sockaddr *) &addr_in, sizeof addr_in) < 0)
@@ -103,18 +104,18 @@ int GroupSock::bind(in_addr_t addr, in_port_t port) {
     return sock;
 }
 
+
 struct ip_mreq GroupSock::add_member(const char *multi_addr) {
     assert(type == MULTICAST);
     struct ip_mreq ip;
     ip.imr_interface.s_addr = htonl(INADDR_ANY);
     ip.imr_multiaddr.s_addr = inet_addr(multi_addr);
-//    if (inet_aton(multi_addr, &ip.imr_multiaddr) == 0)
-//        err("inet_aton (add_member)");
     if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP,
                    (void *) &ip, sizeof(ip)) < 0)
         err("setsockopt (add_member)");
     return ip;
 }
+
 
 void GroupSock::drop_member(struct ip_mreq ip) {
     assert(type == MULTICAST);
