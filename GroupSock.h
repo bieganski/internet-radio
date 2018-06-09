@@ -21,6 +21,10 @@ public:
 
     ~GroupSock();
 
+    GroupSock& operator=(const GroupSock &other) = delete;
+
+    GroupSock& operator=(GroupSock &&other);
+
     static struct sockaddr_in make_addr(in_addr_t addr, in_port_t port);
 
     static struct sockaddr_in make_addr(const char *addr, in_port_t port);

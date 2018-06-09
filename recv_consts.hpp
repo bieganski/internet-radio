@@ -13,8 +13,6 @@ namespace Recv_Consts {
 
     static unsigned MY_IDX = 385162; // mb385162
 
-    static char DISCOVER_ADDR[] = "255.255.255.255"; // fixed length
-
     static in_port_t CTRL_PORT = (in_port_t) (30000 + (MY_IDX % 10000));
 
     static in_port_t UI_PORT = (in_port_t) (10000 + (MY_IDX % 10000));
@@ -24,6 +22,10 @@ namespace Recv_Consts {
     static unsigned RTIME = 250;
 
     const size_t NAME_LEN = 64;
+
+    const size_t QUEUE_LEN = 10;
+
+    const size_t BUFF_LEN = 5000;
 }
 
 #endif //NETWORK_RADIO_RECV_CONSTS_HPP

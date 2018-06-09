@@ -3,6 +3,8 @@
 #include <cassert>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <algorithm>
+#include <utility>
 
 #include "GroupSock.h"
 #include "utils.h"
@@ -12,9 +14,7 @@ GroupSock::GroupSock(Type t, int flags) : type(t) {
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0)
         err("socket error!");
-    flags = fcntl(sock, F_GETFL);
-    flags |= flags;
-    fcntl(sock, F_SETFL, flags);
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | flags);
 
     int optval = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &optval,
@@ -43,6 +43,12 @@ GroupSock::~GroupSock() {
     if (close(sock) == -1) {
         err("close");
     }
+}
+
+GroupSock& GroupSock::operator=(GroupSock &&other) {
+    std::swap(this->sock, other.sock);
+    std::swap(this->type, other.type);
+    return *this;
 }
 
 struct sockaddr_in GroupSock::make_addr(const char *addr, in_port_t port) {
@@ -101,11 +107,12 @@ struct ip_mreq GroupSock::add_member(const char *multi_addr) {
     assert(type == MULTICAST);
     struct ip_mreq ip;
     ip.imr_interface.s_addr = htonl(INADDR_ANY);
-    if (inet_aton(multi_addr, &ip.imr_multiaddr) == 0)
-        err("inet_aton");
+    ip.imr_multiaddr.s_addr = inet_addr(multi_addr);
+//    if (inet_aton(multi_addr, &ip.imr_multiaddr) == 0)
+//        err("inet_aton (add_member)");
     if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                   (void *) &ip, sizeof(ip_mreq)) < 0)
-        err("setsockopt");
+                   (void *) &ip, sizeof(ip)) < 0)
+        err("setsockopt (add_member)");
     return ip;
 }
 

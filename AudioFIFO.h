@@ -33,11 +33,21 @@ public:
 
     bool complete() const; // contains consistent bytes sequence
 
-    void clean();
+    void clear();
+
+    bool empty();
 
     void reinit(size_t data_len); // fifo size doesn't change
 
     bool playing_possible() const; // at least BYTE0 + ⌊BSIZE*3/4⌋ present in queue
+
+    size_t pack_len();
+
+    // makes string from fifo starting from 'first_byte'
+    // returns next byte to read
+    std::pair<uint64_t, std::string> str(uint64_t first_byte);
+
+    std::pair<uint64_t, std::string> str();
 };
 
 #endif //NETWORK_RADIO_AUDIOFIFO_H

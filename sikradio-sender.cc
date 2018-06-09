@@ -34,15 +34,9 @@ using namespace Send_Consts;
 using namespace TelnetConstants;
 
 
-// TODO ***** WAZNE       poczytac o REUSE ADDR
+const size_t BUF_DEF_SIZE = 20000;
 
-// TODO ***** ioctl() API sets the socket to be nonblocking.
-
-// TODO *****
-
-const size_t BUF_DEF_SIZE = 5000;
-
-char data_buff[BUF_DEF_SIZE];
+char * data_buff;
 char help_buff[BUF_DEF_SIZE];
 char ctrl_buff[BUF_DEF_SIZE];
 
@@ -59,8 +53,7 @@ std::mutex rexmit_mut;
 
 std::atomic<bool> PROGRAM_RUNNING(true);
 
-const char *DEFAULT_NAME = "Nienazwany Nadajnik";
-std::string NAME;
+std::string NAME = std::string{"Nienazwany Nadajnik"};
 
 bool proper_ip(const char *str) {
     struct sockaddr_in sa;
@@ -101,12 +94,13 @@ void parse_args(int argc, char *argv[]) {
                 RTIME = get_pos_nr_or_err(optarg);
                 break;
             case 'n': // transmittor name
-                for ( ;optind < argc && *argv[optind] != '-'; optind++){
-                    ss << argv[optind];
-                    if (argc - 1 != optind)
+                for (int i = optind - 1; i < argc && *argv[i] != '-'; i++) {
+                    ss << argv[i];
+                    if (argc - 1 != i)
                         ss << " ";
                 }
                 NAME = ss.str();
+                cout << "zrobilem imie: " << NAME << "\n";
                 if (NAME.size() >= NAME_LEN)
                     err("Transmitter name too long.");
                 break;
@@ -140,28 +134,45 @@ void send_data_udp(int sock, uint64_t first_byte_num, const char *data) {
     write(sock, help_buff, PSIZE + INFO_LEN); // UDP send
 }
 
+/**
+ * @return Number of read bytes.
+ */
+size_t read_bytes() {
+    size_t act_read = 0;
+    while (act_read < BUF_DEF_SIZE / 2) {
+        ssize_t len = read(STDIN_FILENO, data_buff + act_read, PSIZE);
+        if (len < 0)
+            err("read error");
+        act_read += len;
+        if (len == 0)
+            return act_read;
+    }
+    return act_read;
+}
+
+size_t send_bytes(size_t bytes_read, int sock, uint64_t first_byte) {
+    size_t sent = 0;
+    while (sent + PSIZE <= bytes_read) {
+        cout << "wysylam kolesia\n";
+        send_data_udp(sock, first_byte + sent, data_buff + sent);
+        FIFO.push_back(first_byte + sent, data_buff + sent, PSIZE);
+        sent += PSIZE;
+    }
+    return sent;
+}
+
 void read_and_send() {
-    GroupSock data_sock{};
+    GroupSock data_sock{MULTICAST};
     data_sock.connect(MCAST_ADDR, DATA_PORT);
 
     uint64_t first_byte = 0;
-    ssize_t len;
-    int symulacja;
-    symulacja = open("/dev/zero", O_RDONLY);
+    size_t len;
+
     do {
-        //len = read(STDIN_FILENO, buff, PSIZE);
-        len = read(symulacja, data_buff, PSIZE);
-        if (len != PSIZE) {
-            finish_job();
-        }
-        else {
-            cout << "wysylam fb: " << first_byte << "\n";
-            send_data_udp(data_sock.get_sock(), first_byte, data_buff);
-            FIFO.push_back(first_byte, data_buff, PSIZE);
-            first_byte += len;
-        }
+        len = read_bytes();
+        len = send_bytes(len, data_sock.get_sock(), first_byte);
+        first_byte += len;
     } while (len > 0);
-    close(symulacja);
 }
 
 
@@ -171,19 +182,14 @@ void parse_rexmit(const char *str) {
     tmp >> mess;
     tmp >> mess;
     stringstream ss(mess);
-    cout << "HUJ: " << mess << "\n";
     while (getline(ss, mess, ',')) {
         if (is_positive_number(mess.c_str())) {
             rexmit_mut.lock();
             TO_REXMIT_TMP.insert(
                 (uint64_t) strtoull(mess.c_str(), nullptr, 10));
-            cout << "dodalem do TMP liczbe "
-                 << strtoull(mess.c_str(), nullptr, 10) << "\n";
             rexmit_mut.unlock();
         }
     }
-    cout << "koniec dodawania, w TMP jest " << TO_REXMIT_TMP.size()
-         << "elemetnow\n";
 }
 
 void send_rexmit(int sock) {
@@ -192,26 +198,24 @@ void send_rexmit(int sock) {
     TO_REXMIT = TO_REXMIT_TMP;
     TO_REXMIT_TMP.clear();
     rexmit_mut.unlock(); // let other thread add to tmp set
-    cout << "REX: okej, szykuje sie do wysylania\n";
     for (uint64_t fb : TO_REXMIT) {
         ssize_t data_idx = FIFO.idx(fb);
-        cout << "REX: wysylam IDX " << data_idx << "\n";
+        //cout << "REX: wysylam IDX " << data_idx << "\n";
         if (data_idx >= 0) { // else none in queue
-            cout << "REX: fb=" << fb << ", len=" << FIFO[data_idx].size()
-                 << "\n";
+            //cout << "REX: fb=" << fb << ", len=" << FIFO[data_idx].size()
+            //     << "\n";
             send_data_udp(sock, fb, FIFO[data_idx].c_str());
         }
     }
     TO_REXMIT.clear();
 }
 
-void send_lookup_response(int sock, struct sockaddr_in * addr) {
+void send_lookup_response(int sock, struct sockaddr_in *addr) {
     stringstream ss;
     ss << "BOREWICZ_HERE " << MCAST_ADDR << " " << DATA_PORT <<
        " " << NAME << "\n";
-    cout << "LOOK: wysylam swoje dane\n";
-    sendto(sock, ss.str().c_str(), ss.str().size(), 0, (sockaddr*)addr, sizeof(*addr));
-    // write(sock, ss.str().c_str(), ss.str().size());
+    sendto(sock, ss.str().c_str(), ss.str().size(), 0,
+           (sockaddr *) addr, sizeof(*addr));
 }
 
 
@@ -220,7 +224,7 @@ void recv_ctrl_packs() {
     ssize_t len;
     fd_set read_set;
     struct timeval tv;
-    GroupSock ctrl_sock{}; // receive TODO should be blocking?
+    GroupSock ctrl_sock{};
     ctrl_sock.bind(INADDR_ANY, CTRL_PORT);
     bool to_join = false;
     thread rex;
@@ -246,8 +250,6 @@ void recv_ctrl_packs() {
             // time down - need to send rexmit
             if (to_join)
                 rex.join();
-            cout << "koniec czasu, powinienem wyslac tyle: "
-                 << TO_REXMIT_TMP.size() << "\n";
             rex = thread(send_rexmit, bcast_sock.get_sock());
             to_join = true;
         }
@@ -255,25 +257,21 @@ void recv_ctrl_packs() {
             struct sockaddr_in lol;
             socklen_t roz = sizeof(lol);
             len = recvfrom(ctrl_sock_fd, ctrl_buff, BUF_DEF_SIZE, 0,
-                           (sockaddr *)&lol, &roz);
-            //cout << "UWAGA: DOSTALEM PORT" << ntohs(lol.sin_port) << "A adres " << ntohl(lol.sin_addr.s_addr);
+                           (sockaddr *) &lol, &roz);
             ctrl_buff[len] = '\0'; // just to be sure
             MessageParser mp;
             switch (mp.parse(ctrl_buff)) {
                 case (Mess::LOOKUP):
-                    cout << "CTRL: LOOKUP: " << ctrl_buff << "\n";
                     // need to send back immediately
                     send_lookup_response(bcast_sock.get_sock(), &lol);
                     break;
                 case (Mess::REXMIT):
-                    cout << "CTRL: REXMIT: " << ctrl_buff << "\n";
                     parse_rexmit(ctrl_buff);
                     break;
                 case (Mess::REPLY):
                     // do nothing, actually any transmitter sent it
                     break;
                 case (Mess::UNKNOWN):
-                    cout << "CTRL: NIEZNANE: " << ctrl_buff << "\n";
                     // just skip improper message
                     break;
                 default:
@@ -284,26 +282,18 @@ void recv_ctrl_packs() {
 }
 
 
-// TODO Każdy komunikat to pojedyncza linia tekstu zakończona uniksowym znakiem
-// końca linii. Poza znakiem końca linii dopuszcza się jedynie znaki o numerach
-// od 32 do 127 według kodowania ASCII.
-
 int main(int argc, char *argv[]) {
     SESS_ID = (uint64_t) time(nullptr);
-
-    string NAME = string(DEFAULT_NAME);
+    data_buff = (char *) malloc(BUF_DEF_SIZE);
     parse_args(argc, argv);
 
-
-    // TEN ODBIERA KONTROLNE PAKIETY
     std::thread CTRL_THREAD(recv_ctrl_packs);
-    //CTRL_THREAD.detach();
 
-    // TEN CZYTA Z WEJSCIA I WYSYLA DANE
     read_and_send();
 
-    // PROGRAM_RUNNING = false;
-    assert(PROGRAM_RUNNING == true);
+    PROGRAM_RUNNING = false;
+
     CTRL_THREAD.join();
+
     return 0;
 }
